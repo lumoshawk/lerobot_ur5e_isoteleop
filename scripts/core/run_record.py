@@ -2,7 +2,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any
 from scripts.utils.dataset_utils import generate_dataset_name, update_dataset_info
-from lerobot_robot_ur5e import UR5eConfig, UR5e
+from lerobot_robot_ur5e import UR5eConfig, UR5e, DualUR5e
 from lerobot_teleoperator_ur5e import UR5eTeleopConfig, UR5eTeleop
 from lerobot.cameras.configs import ColorMode, Cv2Rotation
 from lerobot.cameras.realsense.camera_realsense import RealSenseCameraConfig
@@ -29,7 +29,6 @@ class RecordConfig:
         cam = cfg["cameras"]
         robot = cfg["robot"]
         teleop = cfg["teleop"]
-        dxl_cfg = teleop["dynamixel_config"]
 
         # global config
         self.repo_id: str = cfg["repo_id"]
@@ -38,23 +37,51 @@ class RecordConfig:
         self.dataset_path: str = HF_LEROBOT_HOME / self.repo_id
         self.user_info: str = cfg.get("user_notes", None)
 
-        # teleop config
-        self.port = dxl_cfg["port"]
-        self.use_gripper = dxl_cfg["use_gripper"]  
-        self.joint_ids = dxl_cfg["joint_ids"]
-        self.joint_offsets = dxl_cfg["joint_offsets"]
-        self.joint_signs = dxl_cfg["joint_signs"]
-        self.gripper_config = dxl_cfg["gripper_config"]
-        self.hardware_offsets = dxl_cfg["hardware_offsets"]
-        self.control_mode = teleop.get("control_mode", "isoteleop")
-        
-        # robot config
-        self.robot_ip: str = robot["ip"]
-        self.gripper_port: str = robot["gripper_port"]
-        self.use_gripper: str = robot["use_gripper"]
-        self.close_threshold = robot["close_threshold"]
-        self.gripper_reverse: str = robot["gripper_reverse"]
-        self.gripper_bin_threshold: float = robot["gripper_bin_threshold"]
+        # Detect if this is dual-arm or single-arm configuration
+        self.is_dual_arm = "left_arm" in teleop and "right_arm" in teleop
+
+        if self.is_dual_arm:
+            # Dual-arm teleop config
+            self.port = teleop["port"]
+            self.control_mode = teleop.get("control_mode", "isoteleop")
+            self.left_arm = teleop["left_arm"]
+            self.right_arm = teleop["right_arm"]
+
+            # Dual-arm robot config
+            self.robot_left = robot["left_arm"]
+            self.robot_right = robot["right_arm"]
+
+            # Dual-arm cameras config
+            self.left_wrist_cam_serial: str = cam["left_wrist_cam_serial"]
+            self.left_exterior_cam_serial: str = cam["left_exterior_cam_serial"]
+            self.right_wrist_cam_serial: str = cam["right_wrist_cam_serial"]
+            self.right_exterior_cam_serial: str = cam["right_exterior_cam_serial"]
+        else:
+            # Single-arm config (backward compatibility)
+            dxl_cfg = teleop["dynamixel_config"]
+            self.port = dxl_cfg["port"]
+            self.use_gripper = dxl_cfg["use_gripper"]
+            self.joint_ids = dxl_cfg["joint_ids"]
+            self.joint_offsets = dxl_cfg["joint_offsets"]
+            self.joint_signs = dxl_cfg["joint_signs"]
+            self.gripper_config = dxl_cfg["gripper_config"]
+            self.hardware_offsets = dxl_cfg["hardware_offsets"]
+            self.control_mode = teleop.get("control_mode", "isoteleop")
+
+            # Single-arm robot config
+            self.robot_ip: str = robot["ip"]
+            self.gripper_port: str = robot["gripper_port"]
+            self.use_gripper: str = robot["use_gripper"]
+            self.close_threshold = robot["close_threshold"]
+            self.gripper_reverse: str = robot["gripper_reverse"]
+            self.gripper_bin_threshold: float = robot["gripper_bin_threshold"]
+
+            # Single-arm cameras config
+            self.wrist_cam_serial: str = cam["wrist_cam_serial"]
+            self.exterior_cam_serial: str = cam["exterior_cam_serial"]
+
+        self.width: int = cam["width"]
+        self.height: int = cam["height"]
 
         # task config
         self.num_episodes: int = task.get("num_episodes", 1)
@@ -67,12 +94,6 @@ class RecordConfig:
         self.episode_time_sec: int = time.get("episode_time_sec", 60)
         self.reset_time_sec: int = time.get("reset_time_sec", 10)
         self.save_mera_period: int = time.get("save_mera_period", 1)
-
-        # cameras config
-        self.wrist_cam_serial: str = cam["wrist_cam_serial"]
-        self.exterior_cam_serial: str = cam["exterior_cam_serial"]
-        self.width: int = cam["width"]
-        self.height: int = cam["height"]
 
         # storage config
         self.push_to_hub: bool = storage.get("push_to_hub", False)
@@ -114,51 +135,124 @@ def run_record(record_cfg: RecordConfig):
         dataset_name, data_version = generate_dataset_name(record_cfg)
 
         # Check joint offsets
-        if not record_cfg.debug:
-            check_joint_offsets(record_cfg)        
-        
-        # Create RealSenseCamera configurations
-        wrist_image_cfg = RealSenseCameraConfig(serial_number_or_name=record_cfg.wrist_cam_serial,
-                                        fps=record_cfg.fps,
-                                        width=record_cfg.width,
-                                        height=record_cfg.height,
-                                        color_mode=ColorMode.RGB,
-                                        use_depth=False,
-                                        rotation=Cv2Rotation.NO_ROTATION)
+        if not record_cfg.debug and not record_cfg.is_dual_arm:
+            check_joint_offsets(record_cfg)
 
-        exterior_image_cfg = RealSenseCameraConfig(serial_number_or_name=record_cfg.exterior_cam_serial,
-                                        fps=record_cfg.fps,
-                                        width=record_cfg.width,
-                                        height=record_cfg.height,
-                                        color_mode=ColorMode.RGB,
-                                        use_depth=False,
-                                        rotation=Cv2Rotation.NO_ROTATION)
+        if record_cfg.is_dual_arm:
+            # Create camera configurations for dual-arm setup
+            left_wrist_cfg = RealSenseCameraConfig(
+                serial_number_or_name=record_cfg.left_wrist_cam_serial,
+                fps=record_cfg.fps,
+                width=record_cfg.width,
+                height=record_cfg.height,
+                color_mode=ColorMode.RGB,
+                use_depth=False,
+                rotation=Cv2Rotation.NO_ROTATION)
 
-        # Create the robot and teleoperator configurations
-        camera_config = {"wrist_image": wrist_image_cfg, "exterior_image": exterior_image_cfg}
-        teleop_config = UR5eTeleopConfig(        
-            port=record_cfg.port,
-            use_gripper=record_cfg.use_gripper,
-            hardware_offsets=record_cfg.hardware_offsets,
-            joint_ids=record_cfg.joint_ids,
-            joint_offsets=record_cfg.joint_offsets,
-            joint_signs=record_cfg.joint_signs,
-            gripper_config=record_cfg.gripper_config,
-            control_mode=record_cfg.control_mode)
-        
-        robot_config = UR5eConfig(
-            robot_ip=record_cfg.robot_ip,
-            gripper_port=record_cfg.gripper_port,
-            cameras = camera_config,
-            debug = record_cfg.debug,
-            close_threshold = record_cfg.close_threshold,
-            use_gripper = record_cfg.use_gripper,
-            gripper_reverse = record_cfg.gripper_reverse,
-            gripper_bin_threshold = record_cfg.gripper_bin_threshold
-        )
-        # Initialize the robot and teleoperator
-        robot = UR5e(robot_config)
-        teleop = UR5eTeleop(teleop_config)
+            left_exterior_cfg = RealSenseCameraConfig(
+                serial_number_or_name=record_cfg.left_exterior_cam_serial,
+                fps=record_cfg.fps,
+                width=record_cfg.width,
+                height=record_cfg.height,
+                color_mode=ColorMode.RGB,
+                use_depth=False,
+                rotation=Cv2Rotation.NO_ROTATION)
+
+            right_wrist_cfg = RealSenseCameraConfig(
+                serial_number_or_name=record_cfg.right_wrist_cam_serial,
+                fps=record_cfg.fps,
+                width=record_cfg.width,
+                height=record_cfg.height,
+                color_mode=ColorMode.RGB,
+                use_depth=False,
+                rotation=Cv2Rotation.NO_ROTATION)
+
+            right_exterior_cfg = RealSenseCameraConfig(
+                serial_number_or_name=record_cfg.right_exterior_cam_serial,
+                fps=record_cfg.fps,
+                width=record_cfg.width,
+                height=record_cfg.height,
+                color_mode=ColorMode.RGB,
+                use_depth=False,
+                rotation=Cv2Rotation.NO_ROTATION)
+
+            # Create dual-arm teleop configuration
+            teleop_config = UR5eTeleopConfig(
+                port=record_cfg.port,
+                control_mode=record_cfg.control_mode,
+                left_arm=record_cfg.left_arm,
+                right_arm=record_cfg.right_arm)
+
+            # Create dual-arm robot configurations
+            left_camera_config = {"wrist_image": left_wrist_cfg, "exterior_image": left_exterior_cfg}
+            right_camera_config = {"wrist_image": right_wrist_cfg, "exterior_image": right_exterior_cfg}
+
+            left_robot_config = UR5eConfig(
+                robot_ip=record_cfg.robot_left["ip"],
+                gripper_port=record_cfg.robot_left["gripper_port"],
+                cameras=left_camera_config,
+                debug=record_cfg.debug,
+                close_threshold=record_cfg.robot_left["close_threshold"],
+                use_gripper=record_cfg.robot_left["use_gripper"],
+                gripper_reverse=record_cfg.robot_left["gripper_reverse"],
+                gripper_bin_threshold=record_cfg.robot_left["gripper_bin_threshold"])
+
+            right_robot_config = UR5eConfig(
+                robot_ip=record_cfg.robot_right["ip"],
+                gripper_port=record_cfg.robot_right["gripper_port"],
+                cameras=right_camera_config,
+                debug=record_cfg.debug,
+                close_threshold=record_cfg.robot_right["close_threshold"],
+                use_gripper=record_cfg.robot_right["use_gripper"],
+                gripper_reverse=record_cfg.robot_right["gripper_reverse"],
+                gripper_bin_threshold=record_cfg.robot_right["gripper_bin_threshold"])
+
+            # Initialize dual-arm robot and teleoperator
+            robot = DualUR5e(left_robot_config, right_robot_config)
+            teleop = UR5eTeleop(teleop_config)
+        else:
+            # Single-arm setup (backward compatibility)
+            wrist_image_cfg = RealSenseCameraConfig(
+                serial_number_or_name=record_cfg.wrist_cam_serial,
+                fps=record_cfg.fps,
+                width=record_cfg.width,
+                height=record_cfg.height,
+                color_mode=ColorMode.RGB,
+                use_depth=False,
+                rotation=Cv2Rotation.NO_ROTATION)
+
+            exterior_image_cfg = RealSenseCameraConfig(
+                serial_number_or_name=record_cfg.exterior_cam_serial,
+                fps=record_cfg.fps,
+                width=record_cfg.width,
+                height=record_cfg.height,
+                color_mode=ColorMode.RGB,
+                use_depth=False,
+                rotation=Cv2Rotation.NO_ROTATION)
+
+            camera_config = {"wrist_image": wrist_image_cfg, "exterior_image": exterior_image_cfg}
+            teleop_config = UR5eTeleopConfig(
+                port=record_cfg.port,
+                use_gripper=record_cfg.use_gripper,
+                hardware_offsets=record_cfg.hardware_offsets,
+                joint_ids=record_cfg.joint_ids,
+                joint_offsets=record_cfg.joint_offsets,
+                joint_signs=record_cfg.joint_signs,
+                gripper_config=record_cfg.gripper_config,
+                control_mode=record_cfg.control_mode)
+
+            robot_config = UR5eConfig(
+                robot_ip=record_cfg.robot_ip,
+                gripper_port=record_cfg.gripper_port,
+                cameras=camera_config,
+                debug=record_cfg.debug,
+                close_threshold=record_cfg.close_threshold,
+                use_gripper=record_cfg.use_gripper,
+                gripper_reverse=record_cfg.gripper_reverse,
+                gripper_bin_threshold=record_cfg.gripper_bin_threshold)
+
+            robot = UR5e(robot_config)
+            teleop = UR5eTeleop(teleop_config)
 
         # Configure the dataset features
         action_features = hw_to_dataset_features(robot.action_features, "action")

@@ -4,7 +4,7 @@ import logging
 logging.basicConfig(level=logging.WARNING, format="%(message)s")
 from pathlib import Path
 from typing import Dict, Any
-from lerobot_robot_ur5e import UR5eConfig, UR5e
+from lerobot_robot_ur5e import UR5eConfig, UR5e, DualUR5e
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.utils.robot_utils import busy_wait
 from lerobot.utils.utils import log_say
@@ -18,24 +18,53 @@ class ReplayConfig:
         self.episode_idx: str = cfg.get("episode_idx", 0)
         self.debug: bool = cfg.get("debug", False)
 
-        # robot config
-        self.robot_ip: str = robot["ip"]
-        self.use_gripper: bool = robot["use_gripper"]
-        self.gripper_port: str = robot["gripper_port"]
-        self.gripper_reverse: bool = robot["gripper_reverse"]
+        # Detect if this is dual-arm or single-arm configuration
+        self.is_dual_arm = "left_arm" in robot and "right_arm" in robot
+
+        if self.is_dual_arm:
+            # Dual-arm robot config
+            self.robot_left = robot["left_arm"]
+            self.robot_right = robot["right_arm"]
+        else:
+            # Single-arm robot config (backward compatibility)
+            self.robot_ip: str = robot["ip"]
+            self.use_gripper: bool = robot["use_gripper"]
+            self.gripper_port: str = robot["gripper_port"]
+            self.gripper_reverse: bool = robot["gripper_reverse"]
 
 def run_replay(replay_cfg: ReplayConfig):
     episode_idx = replay_cfg.episode_idx
 
-    robot_config = UR5eConfig(
-        robot_ip=replay_cfg.robot_ip,
-        gripper_port=replay_cfg.gripper_port,
-        debug=replay_cfg.debug,
-        use_gripper=replay_cfg.use_gripper,
-        gripper_reverse=replay_cfg.gripper_reverse,
-    )
+    if replay_cfg.is_dual_arm:
+        # Dual-arm setup
+        left_robot_config = UR5eConfig(
+            robot_ip=replay_cfg.robot_left["ip"],
+            gripper_port=replay_cfg.robot_left["gripper_port"],
+            debug=replay_cfg.debug,
+            use_gripper=replay_cfg.robot_left["use_gripper"],
+            gripper_reverse=replay_cfg.robot_left["gripper_reverse"],
+        )
 
-    robot = UR5e(robot_config)
+        right_robot_config = UR5eConfig(
+            robot_ip=replay_cfg.robot_right["ip"],
+            gripper_port=replay_cfg.robot_right["gripper_port"],
+            debug=replay_cfg.debug,
+            use_gripper=replay_cfg.robot_right["use_gripper"],
+            gripper_reverse=replay_cfg.robot_right["gripper_reverse"],
+        )
+
+        robot = DualUR5e(left_robot_config, right_robot_config)
+    else:
+        # Single-arm setup (backward compatibility)
+        robot_config = UR5eConfig(
+            robot_ip=replay_cfg.robot_ip,
+            gripper_port=replay_cfg.gripper_port,
+            debug=replay_cfg.debug,
+            use_gripper=replay_cfg.use_gripper,
+            gripper_reverse=replay_cfg.gripper_reverse,
+        )
+        robot = UR5e(robot_config)
+
     robot.connect()
     dataset = LeRobotDataset(replay_cfg.dataset_name, episodes=[episode_idx])
     actions = dataset.hf_dataset.select_columns("action")

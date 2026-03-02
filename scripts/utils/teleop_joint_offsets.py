@@ -73,16 +73,34 @@ class RecordConfig:
     def __init__(self, cfg: Dict[str, Any]):
         teleop = cfg["teleop"]
         robot = cfg["robot"]
-        dxl_cfg = teleop["dynamixel_config"]
 
-        # Teleop config
-        self.port = dxl_cfg["port"]
-        self.joint_ids = dxl_cfg["joint_ids"]
-        self.joint_signs = dxl_cfg["joint_signs"]
-        self.hardware_offsets = dxl_cfg["hardware_offsets"]
+        # Detect if this is dual-arm or single-arm configuration
+        self.is_dual_arm = "left_arm" in teleop and "right_arm" in teleop
 
-        # Robot config
-        self.robot_ip: str = robot["ip"]
+        if self.is_dual_arm:
+            # Dual-arm teleop config
+            self.port = teleop["port"]
+            self.left_arm = teleop["left_arm"]
+            self.right_arm = teleop["right_arm"]
+
+            # Dual-arm robot config
+            self.robot_left = robot["left_arm"]
+            self.robot_right = robot["right_arm"]
+
+            # For dual-arm, we'll calibrate left arm by default
+            # (can be extended to calibrate both arms)
+            self.joint_ids = self.left_arm["joint_ids"]
+            self.joint_signs = self.left_arm["joint_signs"]
+            self.hardware_offsets = self.left_arm["hardware_offsets"]
+            self.robot_ip = self.robot_left["ip"]
+        else:
+            # Single-arm config (backward compatibility)
+            dxl_cfg = teleop["dynamixel_config"]
+            self.port = dxl_cfg["port"]
+            self.joint_ids = dxl_cfg["joint_ids"]
+            self.joint_signs = dxl_cfg["joint_signs"]
+            self.hardware_offsets = dxl_cfg["hardware_offsets"]
+            self.robot_ip: str = robot["ip"]
 
 def run(record_cfg):
     start_joints = get_start_joints(record_cfg)

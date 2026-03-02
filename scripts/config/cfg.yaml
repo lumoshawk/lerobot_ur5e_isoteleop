@@ -9,22 +9,40 @@ record:
 
   teleop:
     control_mode: "isoteleop"
-    dynamixel_config:
-      port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
+    port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" # Shared port for all Dynamixel servos
+
+    left_arm:
       hardware_offsets: [-19.07226562, -321, -397.7, -283.9, -88, -323.17382812] # The Calibration offsets between the master and the slave robot
-      use_gripper: &use_gripper True # whether the slave robot can use gripper
+      use_gripper: &use_gripper_left True # whether the slave robot can use gripper
       joint_ids: [1, 2, 3, 4, 5, 6]
       joint_offsets: [1.571, 0.0, 0.0, 0.0, 0.0, 0.0]
       joint_signs: [1, 1, -1, 1, 1, 1]
-      gripper_config: [7, 2.5157, 3.4790] # id, min, max
-      
+      gripper_config: [13, 2.5157, 3.4790] # id, min, max
+
+    right_arm:
+      hardware_offsets: [-19.07226562, -321, -397.7, -283.9, -88, -323.17382812] # The Calibration offsets between the master and the slave robot
+      use_gripper: &use_gripper_right True # whether the slave robot can use gripper
+      joint_ids: [7, 8, 9, 10, 11, 12]
+      joint_offsets: [1.571, 0.0, 0.0, 0.0, 0.0, 0.0]
+      joint_signs: [1, 1, -1, 1, 1, 1]
+      gripper_config: [14, 2.5157, 3.4790] # id, min, max
+
   robot:
-    ip: &ip "192.168.131.11" # robot_ip
-    use_gripper: *use_gripper
-    close_threshold: 0.7 # threshold to determine gripper open/close
-    gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
-    gripper_port: &gripper_port "/dev/ur5e_left_gripper" # gripper_port
-    gripper_reverse: &gripper_reverse False  # If gripper moves opposite, flip this value
+    left_arm:
+      ip: &ip_left "192.168.131.11" # robot_ip for left arm
+      use_gripper: *use_gripper_left
+      close_threshold: 0.7 # threshold to determine gripper open/close
+      gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
+      gripper_port: &gripper_port_left "/dev/ur5e_left_gripper" # gripper_port
+      gripper_reverse: &gripper_reverse_left False  # If gripper moves opposite, flip this value
+
+    right_arm:
+      ip: &ip_right "192.168.131.12" # robot_ip for right arm
+      use_gripper: *use_gripper_right
+      close_threshold: 0.7 # threshold to determine gripper open/close
+      gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
+      gripper_port: &gripper_port_right "/dev/ur5e_right_gripper" # gripper_port
+      gripper_reverse: &gripper_reverse_right False  # If gripper moves opposite, flip this value
 
   task:
     # description: "Pick up the green cube and put it into the trash bin." # task description
@@ -40,8 +58,10 @@ record:
     save_meta_period: 1 # Save metadata after every N episodes
 
   cameras:
-    wrist_cam_serial: "944622073455" # wrist camera serial number
-    exterior_cam_serial: "213522070689" # exterior camera serial number
+    left_wrist_cam_serial: "944622073455" # left arm wrist camera serial number
+    left_exterior_cam_serial: "213522070689" # left arm exterior camera serial number
+    right_wrist_cam_serial: "XXXXXX" # right arm wrist camera serial number - UPDATE THIS
+    right_exterior_cam_serial: "YYYYYY" # right arm exterior camera serial number - UPDATE THIS
     width: 424 # 640 424
     height: 240 # 360 240
 
@@ -53,10 +73,16 @@ replay:
   episode_idx: 0 # episode index to replay
   debug: *debug
   robot:
-    ip: *ip
-    gripper_port: *gripper_port
-    use_gripper: *use_gripper
-    gripper_reverse: *gripper_reverse
+    left_arm:
+      ip: *ip_left
+      gripper_port: *gripper_port_left
+      use_gripper: *use_gripper_left
+      gripper_reverse: *gripper_reverse_left
+    right_arm:
+      ip: *ip_right
+      gripper_port: *gripper_port_right
+      use_gripper: *use_gripper_right
+      gripper_reverse: *gripper_reverse_right
 
 visualize:
   dataset_name: scylearning/pour_water_into_beaker_20251117_v01

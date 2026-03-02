@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 from lerobot.teleoperators.config import TeleoperatorConfig
 
@@ -7,10 +8,16 @@ from lerobot.teleoperators.config import TeleoperatorConfig
 @dataclass
 class UR5eTeleopConfig(TeleoperatorConfig):
     port: str
-    use_gripper: bool
-    hardware_offsets: list[float]
-    joint_ids: list[int]
-    joint_offsets: list[float]
-    joint_signs: list[int]
-    gripper_config: tuple[int, float, float]
     control_mode: str = "isoteleop"
+
+    # Single-arm configuration (optional, for backward compatibility)
+    use_gripper: Optional[bool] = None
+    hardware_offsets: Optional[list[float]] = None
+    joint_ids: Optional[list[int]] = None
+    joint_offsets: Optional[list[float]] = None
+    joint_signs: Optional[list[int]] = None
+    gripper_config: Optional[tuple[int, float, float]] = None
+
+    # Dual-arm configuration (optional)
+    left_arm: Optional[dict] = None
+    right_arm: Optional[dict] = None

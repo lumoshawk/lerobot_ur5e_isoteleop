@@ -322,3 +322,101 @@ class UR5e(Robot):
     @config.setter
     def config(self, value):
         self._config = value
+
+
+class DualUR5e(Robot):
+    """
+    Dual-arm UR5e robot controller managing two UR5e arms.
+    """
+    name = "dual_ur5e"
+
+    def __init__(self, left_config: UR5eConfig, right_config: UR5eConfig):
+        # Don't call super().__init__() as we're managing two robots
+        self.left_arm = UR5e(left_config)
+        self.right_arm = UR5e(right_config)
+        self._is_connected = False
+
+    def connect(self) -> None:
+        logger.info("\n===== [DUAL-ARM] Connecting to both UR5e robots =====")
+        logger.info("[DUAL-ARM] Connecting LEFT arm...")
+        self.left_arm.connect()
+        logger.info("[DUAL-ARM] Connecting RIGHT arm...")
+        self.right_arm.connect()
+        self._is_connected = True
+        logger.info("[DUAL-ARM] Both arms connected successfully.\n")
+
+    @property
+    def action_features(self) -> dict[str, type]:
+        left_features = {f"left_{k}": v for k, v in self.left_arm.action_features.items()}
+        right_features = {f"right_{k}": v for k, v in self.right_arm.action_features.items()}
+        return {**left_features, **right_features}
+
+    def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        # Split actions for left and right arms
+        left_action = {k.replace("left_", ""): v for k, v in action.items() if k.startswith("left_")}
+        right_action = {k.replace("right_", ""): v for k, v in action.items() if k.startswith("right_")}
+
+        # Send actions to both arms
+        self.left_arm.send_action(left_action)
+        self.right_arm.send_action(right_action)
+
+        return action
+
+    def get_observation(self) -> dict[str, Any]:
+        # Get observations from both arms
+        left_obs = self.left_arm.get_observation()
+        right_obs = self.right_arm.get_observation()
+
+        # Prefix keys with left_ and right_
+        combined_obs = {}
+        for key, value in left_obs.items():
+            combined_obs[f"left_{key}"] = value
+        for key, value in right_obs.items():
+            combined_obs[f"right_{key}"] = value
+
+        return combined_obs
+
+    def disconnect(self) -> None:
+        if not self._is_connected:
+            return
+
+        logger.info("\n===== [DUAL-ARM] Disconnecting both arms =====")
+        self.left_arm.disconnect()
+        self.right_arm.disconnect()
+        self._is_connected = False
+        logger.info("[DUAL-ARM] All connections closed.\n")
+
+    def calibrate(self) -> None:
+        self.left_arm.calibrate()
+        self.right_arm.calibrate()
+
+    def is_calibrated(self) -> bool:
+        return self.left_arm.is_calibrated() and self.right_arm.is_calibrated()
+
+    def configure(self) -> None:
+        self.left_arm.configure()
+        self.right_arm.configure()
+
+    @property
+    def is_connected(self) -> bool:
+        return self._is_connected
+
+    @is_connected.setter
+    def is_connected(self, value: bool) -> None:
+        self._is_connected = value
+
+    @property
+    def observation_features(self) -> dict[str, Any]:
+        left_features = {f"left_{k}": v for k, v in self.left_arm.observation_features.items()}
+        right_features = {f"right_{k}": v for k, v in self.right_arm.observation_features.items()}
+        return {**left_features, **right_features}
+
+    @property
+    def cameras(self):
+        # Combine cameras from both arms with prefixes
+        combined = {}
+        for cam_name, cam in self.left_arm.cameras.items():
+            combined[f"left_{cam_name}"] = cam
+        for cam_name, cam in self.right_arm.cameras.items():
+            combined[f"right_{cam_name}"] = cam
+        return combined

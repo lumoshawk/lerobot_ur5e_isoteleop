@@ -26,7 +26,7 @@ logger = logging.getLogger(__file__)
 logger.setLevel(logging.INFO)
 class UR5eTeleop(Teleoperator):
     """
-    Isomorphic Teleop class for controlling a single robot arm.
+    Isomorphic Teleop class for controlling dual robot arms.
     """
 
     config_class = UR5eTeleopConfig
@@ -36,6 +36,7 @@ class UR5eTeleop(Teleoperator):
         super().__init__(config)
         self.cfg = config
         self._is_connected = False
+        self.is_dual_arm = hasattr(config, 'left_arm') and hasattr(config, 'right_arm')
 
     @property
     def action_features(self) -> dict:
@@ -60,19 +61,53 @@ class UR5eTeleop(Teleoperator):
 
     def _check_dynamixel_connection(self) -> None:
         logger.info("\n===== [TELEOP] Connecting to dynamixel Robot =====")
-        self.dynamixel_robot = DynamixelRobot(
-                hardware_offsets=self.cfg.hardware_offsets,
-                joint_ids=self.cfg.joint_ids,
-                joint_offsets=self.cfg.joint_offsets,
-                joint_signs=self.cfg.joint_signs,
-                port=self.cfg.port,
-                use_gripper=self.cfg.use_gripper,
-                gripper_config=self.cfg.gripper_config,
-                real=True
-                )
-        joint_positions = self.dynamixel_robot.get_joint_state()
-        logger.info(f"[TELEOP] Current joint positions: {joint_positions.tolist()}")
-        logger.info("===== [TELEOP] Dynamixel robot connected successfully. =====\n")
+
+        if self.is_dual_arm:
+            # Initialize left arm
+            logger.info("[TELEOP] Initializing LEFT arm (servos 1-6)...")
+            self.dynamixel_robot_left = DynamixelRobot(
+                    hardware_offsets=self.cfg.left_arm['hardware_offsets'],
+                    joint_ids=self.cfg.left_arm['joint_ids'],
+                    joint_offsets=self.cfg.left_arm['joint_offsets'],
+                    joint_signs=self.cfg.left_arm['joint_signs'],
+                    port=self.cfg.port,
+                    use_gripper=self.cfg.left_arm['use_gripper'],
+                    gripper_config=self.cfg.left_arm['gripper_config'],
+                    real=True
+                    )
+            joint_positions_left = self.dynamixel_robot_left.get_joint_state()
+            logger.info(f"[TELEOP] LEFT arm joint positions: {joint_positions_left.tolist()}")
+
+            # Initialize right arm on the same port
+            logger.info("[TELEOP] Initializing RIGHT arm (servos 7-12)...")
+            self.dynamixel_robot_right = DynamixelRobot(
+                    hardware_offsets=self.cfg.right_arm['hardware_offsets'],
+                    joint_ids=self.cfg.right_arm['joint_ids'],
+                    joint_offsets=self.cfg.right_arm['joint_offsets'],
+                    joint_signs=self.cfg.right_arm['joint_signs'],
+                    port=self.cfg.port,
+                    use_gripper=self.cfg.right_arm['use_gripper'],
+                    gripper_config=self.cfg.right_arm['gripper_config'],
+                    real=True
+                    )
+            joint_positions_right = self.dynamixel_robot_right.get_joint_state()
+            logger.info(f"[TELEOP] RIGHT arm joint positions: {joint_positions_right.tolist()}")
+            logger.info("===== [TELEOP] Both Dynamixel arms connected successfully on shared port. =====\n")
+        else:
+            # Single arm mode (backward compatibility)
+            self.dynamixel_robot = DynamixelRobot(
+                    hardware_offsets=self.cfg.hardware_offsets,
+                    joint_ids=self.cfg.joint_ids,
+                    joint_offsets=self.cfg.joint_offsets,
+                    joint_signs=self.cfg.joint_signs,
+                    port=self.cfg.port,
+                    use_gripper=self.cfg.use_gripper,
+                    gripper_config=self.cfg.gripper_config,
+                    real=True
+                    )
+            joint_positions = self.dynamixel_robot.get_joint_state()
+            logger.info(f"[TELEOP] Current joint positions: {joint_positions.tolist()}")
+            logger.info("===== [TELEOP] Dynamixel robot connected successfully. =====\n")
     
     def calibrate(self) -> None:
         pass
@@ -81,7 +116,22 @@ class UR5eTeleop(Teleoperator):
         pass
 
     def get_action(self) -> dict[str, Any]:
-        return self.dynamixel_robot.get_observations()
+        if self.is_dual_arm:
+            # Get observations from both arms
+            left_obs = self.dynamixel_robot_left.get_observations()
+            right_obs = self.dynamixel_robot_right.get_observations()
+
+            # Prefix keys with left_ and right_
+            combined_obs = {}
+            for key, value in left_obs.items():
+                combined_obs[f"left_{key}"] = value
+            for key, value in right_obs.items():
+                combined_obs[f"right_{key}"] = value
+
+            return combined_obs
+        else:
+            # Single arm mode (backward compatibility)
+            return self.dynamixel_robot.get_observations()
 
     def send_feedback(self, feedback: dict[str, Any]) -> None:
         pass
@@ -89,8 +139,13 @@ class UR5eTeleop(Teleoperator):
     def disconnect(self) -> None:
         if not self.is_connected:
             return
-        
-        self.dynamixel_robot._driver.close()
+
+        if self.is_dual_arm:
+            self.dynamixel_robot_left._driver.close()
+            self.dynamixel_robot_right._driver.close()
+        else:
+            self.dynamixel_robot._driver.close()
+
         logger.info(f"[INFO] ===== All {self.name} connections have been closed =====")
 
 if __name__ == "__main__":
