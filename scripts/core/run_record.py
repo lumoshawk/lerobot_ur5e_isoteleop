@@ -13,7 +13,7 @@ from lerobot.utils.control_utils import init_keyboard_listener
 import shutil
 import termios, sys
 from lerobot.utils.constants import HF_LEROBOT_HOME
-from scripts.utils.teleop_joint_offsets import get_start_joints, compute_joint_offsets
+from scripts.utils.teleop_joint_offsets import get_start_joints, compute_joint_offsets, save_calibration
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.datasets.utils import hw_to_dataset_features
 from lerobot.utils.control_utils import sanity_check_dataset_robot_compatibility
@@ -112,10 +112,23 @@ def check_joint_offsets(record_cfg: RecordConfig):
     joint_offsets = compute_joint_offsets(record_cfg, start_joints)
 
     if joint_offsets != record_cfg.joint_offsets:
-        raise ValueError(
-            f"Computed joint_offsets {joint_offsets} != provided joint_offsets {record_cfg.joint_offsets}. "
-            "Please check teleop_joint_offsets.py output."
-        )
+        logging.error(f"====== [ERROR] Computed joint_offsets {joint_offsets} != provided joint_offsets {record_cfg.joint_offsets}. Please check teleop_joint_offsets.py output. ======")
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)
+        ans = input("Do you want to update with the new computed values and retry? (y/n): ").strip().lower()
+
+        if ans == "y":
+            logging.info(f"====== [UPDATE] Updating joint_offsets from {record_cfg.joint_offsets} to {joint_offsets} ======")
+            parent_path = Path(__file__).resolve().parent
+            cfg_path = parent_path.parent / "config" / "cfg.yaml"
+            save_calibration(cfg_path,record_cfg.hardware_offsets,joint_offsets)
+            record_cfg.joint_offsets = joint_offsets
+            # Re-check with the updated values
+            return check_joint_offsets(record_cfg)
+        else:
+            raise ValueError(
+                f"Joint offset mismatch not resolved. Computed: {joint_offsets}, Provided: {record_cfg.joint_offsets}. "
+                "Please run teleop_joint_offsets.py to get the correct values."
+            )
     logging.info("Joint offsets verified successfully.")
 
 def handle_incomplete_dataset(dataset_path):
@@ -134,7 +147,7 @@ def run_record(record_cfg: RecordConfig):
     try:
         dataset_name, data_version = generate_dataset_name(record_cfg)
 
-        # Check joint offsets
+        # Check joint offsets - this may update record_cfg.joint_offsets
         if not record_cfg.debug and not record_cfg.is_dual_arm:
             check_joint_offsets(record_cfg)
 
@@ -230,13 +243,13 @@ def run_record(record_cfg: RecordConfig):
                 use_depth=False,
                 rotation=Cv2Rotation.NO_ROTATION)
 
-            camera_config = {"wrist_image": wrist_image_cfg, "exterior_image": exterior_image_cfg}
+            # Note: record_cfg.joint_offsets may have been updated by check_joint_offsetscamera_config = {"wrist_image": wrist_image_cfg, "exterior_image": exterior_image_cfg}
             teleop_config = UR5eTeleopConfig(
                 port=record_cfg.port,
                 use_gripper=record_cfg.use_gripper,
                 hardware_offsets=record_cfg.hardware_offsets,
                 joint_ids=record_cfg.joint_ids,
-                joint_offsets=record_cfg.joint_offsets,
+                joint_offsets=record_cfg.joint_offsets,# This now uses the potentially updated value
                 joint_signs=record_cfg.joint_signs,
                 gripper_config=record_cfg.gripper_config,
                 control_mode=record_cfg.control_mode)
