@@ -333,7 +333,7 @@ def calibrate_joint_offsets(driver: DynamixelDriver, rtde_r: RTDEReceiveInterfac
     return [round(x, 3) for x in joint_offsets], True
 
 def save_calibration(cfg_path: Path, hardware_offsets: List[float],
-                     joint_offsets: List[float]) -> bool:
+                     joint_offsets: List[float], arm_name: str = None) -> bool:
     """Save calibration results to configuration file with backup."""
     logger.info("\n" + "="*60)
     logger.info("STEP 3: SAVE CONFIGURATION")
@@ -376,43 +376,84 @@ def save_calibration(cfg_path: Path, hardware_offsets: List[float],
         while i < len(lines):
             line = lines[i]
 
-            # Check for hardware_offsets
-            if 'hardware_offsets:' in line and 'dynamixel_config' in ''.join(lines[max(0, i-5):i]):
-                updated_lines.append(line)
-                # Get the indent level
-                hardware_offset_indent = line[:len(line) - len(line.lstrip())]
-                # Format as in original: list on same line
-                hw_offsets_str = f"{hardware_offset_indent}hardware_offsets: [{', '.join([str(float(o)) for o in hardware_offsets])}] # The Calibration offsets between the master and the slave robot\n"
-                updated_lines[-1] = hw_offsets_str
+            # For dual-arm mode, we need to check for specific arm sections
+            if arm_name:
+                # Check for hardware_offsets in the specific arm section
+                if 'hardware_offsets:' in line and arm_name in ''.join(lines[max(0, i-5):i]):
+                    updated_lines.append(line)
+                    # Get the indent level
+                    hardware_offset_indent = line[:len(line) - len(line.lstrip())]
+                    # Format as in original: list on same line
+                    hw_offsets_str = f"{hardware_offset_indent}hardware_offsets: [{', '.join([str(float(o)) for o in hardware_offsets])}] # The Calibration offsets between the master and the slave robot\n"
+                    updated_lines[-1] = hw_offsets_str
 
-                # Skip old hardware_offsets lines if they were on multiple lines
-                i += 1
-                while i < len(lines) and (lines[i].strip().startswith('-') or (lines[i].strip() and not ':' in lines[i])):
+                    # Skip old hardware_offsets lines if they were on multiple lines
                     i += 1
-                continue
+                    while i < len(lines) and (lines[i].strip().startswith('-') or (lines[i].strip() and not ':' in lines[i])):
+                        i += 1
+                    continue
 
-            # Check for joint_offsets
-            elif 'joint_offsets:' in line and 'dynamixel_config' in ''.join(lines[max(0, i-10):i]):
-                updated_lines.append(line)
-                # Get the indent level
-                joint_offset_indent = line[:len(line) - len(line.lstrip())]
-                # Format as in original: list on same line
-                joint_offsets_str = f"{joint_offset_indent}joint_offsets: [{', '.join([str(float(o)) for o in joint_offsets])}]\n"
-                updated_lines[-1] = joint_offsets_str
+                # Check for joint_offsets in the specific arm section
+                elif 'joint_offsets:' in line and arm_name in ''.join(lines[max(0, i-10):i]):
+                    updated_lines.append(line)
+                    # Get the indent level
+                    joint_offset_indent = line[:len(line) - len(line.lstrip())]
+                    # Format as in original: list on same line
+                    joint_offsets_str = f"{joint_offset_indent}joint_offsets: [{', '.join([str(float(o)) for o in joint_offsets])}]\n"
+                    updated_lines[-1] = joint_offsets_str
 
-                # Skip old joint_offsets lines if they were on multiple lines
-                i += 1
-                while i < len(lines) and (lines[i].strip().startswith('-') or
-                                         '!!python' in lines[i] or
-                                         'numpy' in lines[i] or
-                                         '*id' in lines[i] or
-                                         '!!binary' in lines[i] or
-                                         (lines[i].strip() and not ':' in lines[i] and not lines[i].strip().startswith('#'))):
+                    # Skip old joint_offsets lines if they were on multiple lines
                     i += 1
-                continue
+                    while i < len(lines) and (lines[i].strip().startswith('-') or
+                                             '!!python' in lines[i] or
+                                             'numpy' in lines[i] or
+                                             '*id' in lines[i] or
+                                             '!!binary' in lines[i] or
+                                             (lines[i].strip() and not ':' in lines[i] and not lines[i].strip().startswith('#'))):
+                        i += 1
+                    continue
+                else:
+                    updated_lines.append(line)
+                    i += 1
             else:
-                updated_lines.append(line)
-                i += 1
+                # Single-arm mode (original logic)
+                # Check for hardware_offsets
+                if 'hardware_offsets:' in line and 'dynamixel_config' in ''.join(lines[max(0, i-5):i]):
+                    updated_lines.append(line)
+                    # Get the indent level
+                    hardware_offset_indent = line[:len(line) - len(line.lstrip())]
+                    # Format as in original: list on same line
+                    hw_offsets_str = f"{hardware_offset_indent}hardware_offsets: [{', '.join([str(float(o)) for o in hardware_offsets])}] # The Calibration offsets between the master and the slave robot\n"
+                    updated_lines[-1] = hw_offsets_str
+
+                    # Skip old hardware_offsets lines if they were on multiple lines
+                    i += 1
+                    while i < len(lines) and (lines[i].strip().startswith('-') or (lines[i].strip() and not ':' in lines[i])):
+                        i += 1
+                    continue
+
+                # Check for joint_offsets
+                elif 'joint_offsets:' in line and 'dynamixel_config' in ''.join(lines[max(0, i-10):i]):
+                    updated_lines.append(line)
+                    # Get the indent level
+                    joint_offset_indent = line[:len(line) - len(line.lstrip())]
+                    # Format as in original: list on same line
+                    joint_offsets_str = f"{joint_offset_indent}joint_offsets: [{', '.join([str(float(o)) for o in joint_offsets])}]\n"
+                    updated_lines[-1] = joint_offsets_str
+
+                    # Skip old joint_offsets lines if they were on multiple lines
+                    i += 1
+                    while i < len(lines) and (lines[i].strip().startswith('-') or
+                                             '!!python' in lines[i] or
+                                             'numpy' in lines[i] or
+                                             '*id' in lines[i] or
+                                             '!!binary' in lines[i] or
+                                             (lines[i].strip() and not ':' in lines[i] and not lines[i].strip().startswith('#'))):
+                        i += 1
+                    continue
+                else:
+                    updated_lines.append(line)
+                    i += 1
 
         # Write the updated config
         with open(cfg_path, 'w') as f:
@@ -434,17 +475,55 @@ class CalibrationConfig:
     def __init__(self, cfg: Dict[str, Any]):
         teleop = cfg["teleop"]
         robot = cfg["robot"]
-        dxl_cfg = teleop["dynamixel_config"]
 
-        # Teleop config
-        self.port = dxl_cfg["port"]
-        self.joint_ids = dxl_cfg["joint_ids"]
-        self.joint_signs = dxl_cfg["joint_signs"]
-        self.hardware_offsets = dxl_cfg["hardware_offsets"]
-        self.joint_offsets = dxl_cfg["joint_offsets"]
+        # Check if dual-arm mode is enabled
+        self.is_dual_arm = cfg.get("dual_arm_mode", False)
 
-        # Robot config
-        self.robot_ip: str = robot["ip"]
+        if self.is_dual_arm:
+            # For dual-arm calibration, ask which arm to calibrate
+            print("\n" + "="*60)
+            print("DUAL-ARM MODE DETECTED")
+            print("="*60)
+            print("Which arm would you like to calibrate?")
+            print("1. Left arm")
+            print("2. Right arm")
+
+            while True:
+                choice = input("\nSelect option (1 or 2): ").strip()
+                if choice in ['1', '2']:
+                    break
+                print("Invalid choice. Please enter 1 or 2.")
+
+            if choice == '1':
+                arm_cfg = teleop["left_arm"]
+                robot_cfg = robot["left_arm"]
+                print("\n✓ Calibrating LEFT arm")
+            else:
+                arm_cfg = teleop["right_arm"]
+                robot_cfg = robot["right_arm"]
+                print("\n✓ Calibrating RIGHT arm")
+
+            self.arm_name = "left_arm" if choice == '1' else "right_arm"
+            self.port = teleop["port"]
+            self.joint_ids = arm_cfg["joint_ids"]
+            self.joint_signs = arm_cfg["joint_signs"]
+            self.hardware_offsets = arm_cfg["hardware_offsets"]
+            self.joint_offsets = arm_cfg["joint_offsets"]
+            self.robot_ip = robot_cfg["ip"]
+        else:
+            # Single-arm config
+            dxl_cfg = teleop["dynamixel_config"]
+
+            # Teleop config
+            self.port = dxl_cfg["port"]
+            self.joint_ids = dxl_cfg["joint_ids"]
+            self.joint_signs = dxl_cfg["joint_signs"]
+            self.hardware_offsets = dxl_cfg["hardware_offsets"]
+            self.joint_offsets = dxl_cfg["joint_offsets"]
+
+            # Robot config
+            self.robot_ip: str = robot["ip"]
+            self.arm_name = None
 
 
 #These are for run_record to call
@@ -511,8 +590,8 @@ class RecordConfig:
         teleop = cfg["teleop"]
         robot = cfg["robot"]
 
-        # Detect if this is dual-arm or single-arm configuration
-        self.is_dual_arm = "left_arm" in teleop and "right_arm" in teleop
+        # Check if dual-arm mode is enabled from config
+        self.is_dual_arm = cfg.get("dual_arm_mode", False)
 
         if self.is_dual_arm:
             # Dual-arm teleop config
@@ -597,7 +676,7 @@ def main():
             return 1
 
         # Step 3: Save calibration
-        save_calibration(cfg_path, hardware_offsets, joint_offsets)
+        save_calibration(cfg_path, hardware_offsets, joint_offsets, calibration_cfg.arm_name)
 
     except KeyboardInterrupt:
         logger.info("\n\n✗ Calibration interrupted by user.")

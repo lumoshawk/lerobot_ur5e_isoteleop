@@ -1,0 +1,100 @@
+# Example configuration file for DUAL-ARM mode
+# To use this configuration:
+# 1. Copy this file to cfg.yaml
+# 2. Update the values according to your hardware setup
+# 3. Run calibration for each arm: python scripts/utils/teleop_joint_offsets.py
+
+record:
+  repo_id: &repo_id "username/dual_arm_task_description"
+  # Suggested format: <hf_username>/<description>
+  # description = task.description -> Verb_SourceObject_prep_TargetObject
+  # e.g. Open the cabinet, place the reagent bottle inside, and close the cabinet
+
+  debug: &debug False # if True, robot will not execute any actions, but gripper can still be controlled
+  user_notes:  # any additional notes about the dataset
+  fps: 15 # dataset and camera frame rate
+
+  # Set to true for dual-arm mode
+  dual_arm_mode: &dual_arm_mode true
+
+  # ========== DUAL ARM TELEOP CONFIGURATION ==========
+  teleop:
+    control_mode: "isoteleop"
+    port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" # Shared port for all Dynamixel servos
+
+    left_arm:
+      hardware_offsets: [-19.07226562, -321, -397.7, -283.9, -88, -323.17382812] # The Calibration offsets between the master and the slave robot
+      use_gripper: &use_gripper_left True # whether the slave robot can use gripper
+      joint_ids: [1, 2, 3, 4, 5, 6]
+      joint_offsets: [1.571, 0.0, 0.0, 0.0, 0.0, 0.0] # Will be calibrated
+      joint_signs: [1, 1, -1, 1, 1, 1]
+      gripper_config: [13, 2.5157, 3.4790] # id, min, max
+
+    right_arm:
+      hardware_offsets: [-19.07226562, -321, -397.7, -283.9, -88, -323.17382812] # The Calibration offsets between the master and the slave robot
+      use_gripper: &use_gripper_right True # whether the slave robot can use gripper
+      joint_ids: [7, 8, 9, 10, 11, 12]
+      joint_offsets: [1.571, 0.0, 0.0, 0.0, 0.0, 0.0] # Will be calibrated
+      joint_signs: [1, 1, -1, 1, 1, 1]
+      gripper_config: [14, 2.5157, 3.4790] # id, min, max
+
+  # ========== DUAL ARM ROBOT CONFIGURATION ==========
+  robot:
+    left_arm:
+      ip: &ip_left "192.168.131.11" # robot_ip for left arm
+      use_gripper: *use_gripper_left
+      close_threshold: 0.7 # threshold to determine gripper open/close
+      gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
+      gripper_port: &gripper_port_left "/dev/ur5e_left_gripper" # gripper_port
+      gripper_reverse: &gripper_reverse_left False  # If gripper moves opposite, flip this value
+
+    right_arm:
+      ip: &ip_right "192.168.131.12" # robot_ip for right arm
+      use_gripper: *use_gripper_right
+      close_threshold: 0.7 # threshold to determine gripper open/close
+      gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
+      gripper_port: &gripper_port_right "/dev/ur5e_right_gripper" # gripper_port
+      gripper_reverse: &gripper_reverse_right False  # If gripper moves opposite, flip this value
+
+  task:
+    description: "Open the cabinet, place the reagent bottle inside, and close the cabinet." # task description
+    num_episodes: 100 # number of episodes to record
+    display: True # Whether to display the data during recording
+    resume: False
+    resume_dataset: username/dual_arm_task_20250101_v01 # dataset to resume from if resume is True
+
+  time:
+    episode_time_sec: 120 # max time per episode in seconds
+    reset_time_sec: 60 # max time to reset between episodes in seconds
+    save_meta_period: 1 # Save metadata after every N episodes
+
+  cameras:
+    left_wrist_cam_serial: "944622073455" # left arm wrist camera serial number
+    left_exterior_cam_serial: "213522070689" # left arm exterior camera serial number
+    right_wrist_cam_serial: "XXXXXX" # right arm wrist camera serial number - UPDATE THIS
+    right_exterior_cam_serial: "YYYYYY" # right arm exterior camera serial number - UPDATE THIS
+    width: 424 # 640 424
+    height: 240 # 360 240
+
+  storage:
+    push_to_hub: False # whether to push the dataset to your huggingface repo after recording
+
+replay:
+  dataset_name: username/dual_arm_task_20250101_v01
+  episode_idx: 0 # episode index to replay
+  debug: *debug
+  robot:
+    left_arm:
+      ip: *ip_left
+      gripper_port: *gripper_port_left
+      use_gripper: *use_gripper_left
+      gripper_reverse: *gripper_reverse_left
+    right_arm:
+      ip: *ip_right
+      gripper_port: *gripper_port_right
+      use_gripper: *use_gripper_right
+      gripper_reverse: *gripper_reverse_right
+
+visualize:
+  dataset_name: username/dual_arm_task_20250101_v01
+  episode_index: 0 # episode index to visualize

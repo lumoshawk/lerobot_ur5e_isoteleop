@@ -63,33 +63,39 @@ class UR5eTeleop(Teleoperator):
         logger.info("\n===== [TELEOP] Connecting to dynamixel Robot =====")
 
         if self.is_dual_arm:
-            # Initialize left arm
-            logger.info("[TELEOP] Initializing LEFT arm (servos 1-6)...")
-            self.dynamixel_robot_left = DynamixelRobot(
-                    hardware_offsets=self.cfg.left_arm['hardware_offsets'],
-                    joint_ids=self.cfg.left_arm['joint_ids'],
-                    joint_offsets=self.cfg.left_arm['joint_offsets'],
-                    joint_signs=self.cfg.left_arm['joint_signs'],
-                    port=self.cfg.port,
-                    use_gripper=self.cfg.left_arm['use_gripper'],
-                    gripper_config=self.cfg.left_arm['gripper_config'],
-                    real=True
-                    )
+            # For dual arm setup, use a single shared driver for both arms
+            from .dynamixel.dual_arm_robot import DualArmDynamixelRobot
+
+            logger.info("[TELEOP] Initializing DUAL ARM robot with shared driver (servos 1-12)...")
+            self.dual_arm_robot = DualArmDynamixelRobot(
+                left_arm_config={
+                    'hardware_offsets': self.cfg.left_arm['hardware_offsets'],
+                    'joint_ids': self.cfg.left_arm['joint_ids'],
+                    'joint_offsets': self.cfg.left_arm['joint_offsets'],
+                    'joint_signs': self.cfg.left_arm['joint_signs'],
+                    'use_gripper': self.cfg.left_arm['use_gripper'],
+                    'gripper_config': self.cfg.left_arm['gripper_config'],
+                },
+                right_arm_config={
+                    'hardware_offsets': self.cfg.right_arm['hardware_offsets'],
+                    'joint_ids': self.cfg.right_arm['joint_ids'],
+                    'joint_offsets': self.cfg.right_arm['joint_offsets'],
+                    'joint_signs': self.cfg.right_arm['joint_signs'],
+                    'use_gripper': self.cfg.right_arm['use_gripper'],
+                    'gripper_config': self.cfg.right_arm['gripper_config'],
+                },
+                port=self.cfg.port,
+                real=True
+            )
+
+            # Get wrapper objects for backward compatibility
+            self.dynamixel_robot_left = self.dual_arm_robot.get_left_arm_wrapper()
+            self.dynamixel_robot_right = self.dual_arm_robot.get_right_arm_wrapper()
+
+            # Test reading positions
             joint_positions_left = self.dynamixel_robot_left.get_joint_state()
             logger.info(f"[TELEOP] LEFT arm joint positions: {joint_positions_left.tolist()}")
 
-            # Initialize right arm on the same port
-            logger.info("[TELEOP] Initializing RIGHT arm (servos 7-12)...")
-            self.dynamixel_robot_right = DynamixelRobot(
-                    hardware_offsets=self.cfg.right_arm['hardware_offsets'],
-                    joint_ids=self.cfg.right_arm['joint_ids'],
-                    joint_offsets=self.cfg.right_arm['joint_offsets'],
-                    joint_signs=self.cfg.right_arm['joint_signs'],
-                    port=self.cfg.port,
-                    use_gripper=self.cfg.right_arm['use_gripper'],
-                    gripper_config=self.cfg.right_arm['gripper_config'],
-                    real=True
-                    )
             joint_positions_right = self.dynamixel_robot_right.get_joint_state()
             logger.info(f"[TELEOP] RIGHT arm joint positions: {joint_positions_right.tolist()}")
             logger.info("===== [TELEOP] Both Dynamixel arms connected successfully on shared port. =====\n")
@@ -141,8 +147,8 @@ class UR5eTeleop(Teleoperator):
             return
 
         if self.is_dual_arm:
-            self.dynamixel_robot_left._driver.close()
-            self.dynamixel_robot_right._driver.close()
+            # Close the shared driver only once
+            self.dual_arm_robot._driver.close()
         else:
             self.dynamixel_robot._driver.close()
 

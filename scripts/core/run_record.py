@@ -37,8 +37,8 @@ class RecordConfig:
         self.dataset_path: str = HF_LEROBOT_HOME / self.repo_id
         self.user_info: str = cfg.get("user_notes", None)
 
-        # Detect if this is dual-arm or single-arm configuration
-        self.is_dual_arm = "left_arm" in teleop and "right_arm" in teleop
+        # Check if dual-arm mode is enabled from config
+        self.is_dual_arm = cfg.get("dual_arm_mode", False)
 
         if self.is_dual_arm:
             # Dual-arm teleop config
@@ -99,34 +99,82 @@ class RecordConfig:
         self.push_to_hub: bool = storage.get("push_to_hub", False)
 
 
-def check_joint_offsets(record_cfg: RecordConfig):
+def check_joint_offsets(record_cfg: RecordConfig, arm_name: str = None):
     """Check the joint_offsets is set and correct."""
 
-    if record_cfg.joint_offsets is None:
+    if record_cfg.is_dual_arm:
+        # For dual-arm, we need to check the specific arm
+        if arm_name == "left":
+            joint_offsets_to_check = record_cfg.left_arm["joint_offsets"]
+            hardware_offsets_to_check = record_cfg.left_arm["hardware_offsets"]
+            robot_ip = record_cfg.robot_left["ip"]
+        else:
+            joint_offsets_to_check = record_cfg.right_arm["joint_offsets"]
+            hardware_offsets_to_check = record_cfg.right_arm["hardware_offsets"]
+            robot_ip = record_cfg.robot_right["ip"]
+    else:
+        joint_offsets_to_check = record_cfg.joint_offsets
+        hardware_offsets_to_check = record_cfg.hardware_offsets
+        robot_ip = record_cfg.robot_ip
+
+    if joint_offsets_to_check is None:
         raise ValueError("joint_offsets is None. Please check teleop_joint_offsets.py output.")
 
-    start_joints = get_start_joints(record_cfg)
+    # Create a temporary config object for get_start_joints
+    temp_cfg = type('obj', (object,), {'robot_ip': robot_ip})()
+    start_joints = get_start_joints(temp_cfg)
     if start_joints is None:
         raise RuntimeError("Failed to retrieve start joints from UR5e robot.")
 
-    joint_offsets = compute_joint_offsets(record_cfg, start_joints)
+    # Create another temp config for compute_joint_offsets
+    if record_cfg.is_dual_arm:
+        if arm_name == "left":
+            temp_cfg = type('obj', (object,), {
+                'joint_ids': record_cfg.left_arm["joint_ids"],
+                'joint_signs': record_cfg.left_arm["joint_signs"],
+                'hardware_offsets': record_cfg.left_arm["hardware_offsets"],
+                'port': record_cfg.port
+            })()
+        else:
+            temp_cfg = type('obj', (object,), {
+                'joint_ids': record_cfg.right_arm["joint_ids"],
+                'joint_signs': record_cfg.right_arm["joint_signs"],
+                'hardware_offsets': record_cfg.right_arm["hardware_offsets"],
+                'port': record_cfg.port
+            })()
+    else:
+        temp_cfg = record_cfg
 
-    if joint_offsets != record_cfg.joint_offsets:
-        logging.error(f"====== [ERROR] Computed joint_offsets {joint_offsets} != provided joint_offsets {record_cfg.joint_offsets}. Please check teleop_joint_offsets.py output. ======")
+    joint_offsets = compute_joint_offsets(temp_cfg, start_joints)
+
+    if joint_offsets != joint_offsets_to_check:
+        logging.error(f"====== [ERROR] Computed joint_offsets {joint_offsets} != provided joint_offsets {joint_offsets_to_check}. Please check teleop_joint_offsets.py output. ======")
         termios.tcflush(sys.stdin, termios.TCIFLUSH)
         ans = input("Do you want to update with the new computed values and retry? (y/n): ").strip().lower()
 
         if ans == "y":
-            logging.info(f"====== [UPDATE] Updating joint_offsets from {record_cfg.joint_offsets} to {joint_offsets} ======")
+            logging.info(f"====== [UPDATE] Updating joint_offsets from {joint_offsets_to_check} to {joint_offsets} ======")
             parent_path = Path(__file__).resolve().parent
             cfg_path = parent_path.parent / "config" / "cfg.yaml"
-            save_calibration(cfg_path,record_cfg.hardware_offsets,joint_offsets)
-            record_cfg.joint_offsets = joint_offsets
+
+            # For dual-arm, pass the arm name to save_calibration
+            arm_name_for_save = f"{arm_name}_arm" if record_cfg.is_dual_arm else None
+            save_calibration(cfg_path, hardware_offsets_to_check, joint_offsets, arm_name_for_save)
+
+            # Update the config
+            if record_cfg.is_dual_arm:
+                if arm_name == "left":
+                    record_cfg.left_arm["joint_offsets"] = joint_offsets
+                else:
+                    record_cfg.right_arm["joint_offsets"] = joint_offsets
+            else:
+                record_cfg.joint_offsets = joint_offsets
+
             # Re-check with the updated values
-            return check_joint_offsets(record_cfg)
+            return check_joint_offsets(record_cfg, arm_name)
         else:
             raise ValueError(
-                f"Joint offset mismatch not resolved. Computed: {joint_offsets}, Provided: {record_cfg.joint_offsets}. "
+                f"Joint offset mismatch not resolved. Computed: {joint_offsets}, Provided: {joint_offsets_to_check}. "
                 "Please run teleop_joint_offsets.py to get the correct values."
             )
     logging.info("Joint offsets verified successfully.")
@@ -148,8 +196,13 @@ def run_record(record_cfg: RecordConfig):
         dataset_name, data_version = generate_dataset_name(record_cfg)
 
         # Check joint offsets - this may update record_cfg.joint_offsets
-        if not record_cfg.debug and not record_cfg.is_dual_arm:
-            check_joint_offsets(record_cfg)
+        if not record_cfg.debug:
+            if record_cfg.is_dual_arm:
+                # Check both arms for dual-arm configuration
+                check_joint_offsets(record_cfg, "left")
+                check_joint_offsets(record_cfg, "right")
+            else:
+                check_joint_offsets(record_cfg)
 
         if record_cfg.is_dual_arm:
             # Create camera configurations for dual-arm setup
@@ -196,9 +249,13 @@ def run_record(record_cfg: RecordConfig):
                 left_arm=record_cfg.left_arm,
                 right_arm=record_cfg.right_arm)
 
-            # Create dual-arm robot configurations
-            left_camera_config = {"wrist_image": left_wrist_cfg, "exterior_image": left_exterior_cfg}
-            right_camera_config = {"wrist_image": right_wrist_cfg, "exterior_image": right_exterior_cfg}
+            # # Create dual-arm robot configurations
+            # left_camera_config = {"wrist_image": left_wrist_cfg, "exterior_image": left_exterior_cfg}
+            # right_camera_config = {"wrist_image": right_wrist_cfg, "exterior_image": right_exterior_cfg}
+
+            # Only wrist camera is used for now
+            left_camera_config = {"wrist_image": left_wrist_cfg}
+            right_camera_config = {"wrist_image": right_wrist_cfg}
 
             left_robot_config = UR5eConfig(
                 robot_ip=record_cfg.robot_left["ip"],
@@ -243,7 +300,8 @@ def run_record(record_cfg: RecordConfig):
                 use_depth=False,
                 rotation=Cv2Rotation.NO_ROTATION)
 
-            # Note: record_cfg.joint_offsets may have been updated by check_joint_offsetscamera_config = {"wrist_image": wrist_image_cfg, "exterior_image": exterior_image_cfg}
+            # Note: record_cfg.joint_offsets may have been updated by check_joint_offsets
+            camera_config = {"wrist_image": wrist_image_cfg, "exterior_image": exterior_image_cfg}
             teleop_config = UR5eTeleopConfig(
                 port=record_cfg.port,
                 use_gripper=record_cfg.use_gripper,

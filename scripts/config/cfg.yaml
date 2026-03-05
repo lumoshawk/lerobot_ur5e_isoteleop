@@ -1,32 +1,62 @@
 record:
-  repo_id: &repo_id "scylearning/pick_greencube_into_trashbin" 
-  # repo_id: &repo_id "scylearning/pick_greencube_into_trashbin" 
+  repo_id: &repo_id "scylearning/pick_greencube_into_trashbin"
+  # repo_id: &repo_id "scylearning/pick_greencube_into_trashbin"
   # Suggested format: <hf_username>/<description>, description = task.description -> Verb_SourceObject_prep_TargetObject
   # e.g. Pick up the green cube and put it into the trash bin -> pick_greencube_into_trashbin
   debug: &debug False # if True, robot will not execute any actions, but gripper can still be controlled
   user_notes:  # any additional notes about the dataset
   fps: 15 # dataset and camera frame rate
 
+  # Set to true to enable dual-arm mode, false for single-arm mode
+  dual_arm_mode: &dual_arm_mode true
+
+  # ========== SINGLE ARM CONFIGURATION ==========
+  # Uncomment below for single-arm mode (set dual_arm_mode to false)
+#  teleop:
+#    control_mode: "isoteleop"
+#    dynamixel_config:
+#      port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
+#      hardware_offsets: [ -230.56640625, -363.57421875, 58.388671875, -267.12890625, -83.701171875, -458.115234375 ] # The Calibration offsets between the master and the slave robot
+#      use_gripper: &use_gripper False # whether the slave robot can use gripper
+#      joint_ids: [ 7, 8, 9, 10, 11, 12 ]
+#      joint_offsets: [ 0.0, 0.0, 0.0, 0.0, 0.0, -7.854 ]
+#      joint_signs: [ 1, 1, -1, 1, 1, 1 ]
+#      gripper_config: [ 7, 2.5157, 3.4790 ] # id, min, max
+
+  # ========== DUAL ARM CONFIGURATION ==========
+  # Used when dual_arm_mode is true
   teleop:
     control_mode: "isoteleop"
     port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" # Shared port for all Dynamixel servos
 
     left_arm:
-      hardware_offsets: [-19.07226562, -321, -397.7, -283.9, -88, -323.17382812] # The Calibration offsets between the master and the slave robot
-      use_gripper: &use_gripper_left True # whether the slave robot can use gripper
+      hardware_offsets: [-255.58183220583527, -376.57553442364906, -228.78893405892194, -178.00208181903145, -123.7674421792403, -395.2296204487917] # The Calibration offsets between the master and the slave robot
+      use_gripper: &use_gripper_left False # whether the slave robot can use gripper
       joint_ids: [1, 2, 3, 4, 5, 6]
-      joint_offsets: [1.571, 0.0, 0.0, 0.0, 0.0, 0.0]
+      joint_offsets: [0.0, 0.0, 1.571, 0.0, 0.0, -1.571]
       joint_signs: [1, 1, -1, 1, 1, 1]
       gripper_config: [13, 2.5157, 3.4790] # id, min, max
 
     right_arm:
-      hardware_offsets: [-19.07226562, -321, -397.7, -283.9, -88, -323.17382812] # The Calibration offsets between the master and the slave robot
-      use_gripper: &use_gripper_right True # whether the slave robot can use gripper
+      hardware_offsets: [-244.81296487900303, -285.5084370396853, -297.92901036966407, -347.14424359650604, -72.00258153058485, 13.675265568325576] # The Calibration offsets between the master and the slave robot
+      use_gripper: &use_gripper_right False # whether the slave robot can use gripper
       joint_ids: [7, 8, 9, 10, 11, 12]
-      joint_offsets: [1.571, 0.0, 0.0, 0.0, 0.0, 0.0]
+      joint_offsets: [0.0, 0.0, -1.571, 0.0, 0.0, -1.571]
       joint_signs: [1, 1, -1, 1, 1, 1]
       gripper_config: [14, 2.5157, 3.4790] # id, min, max
 
+  # ========== SINGLE ARM ROBOT CONFIGURATION ==========
+  # Uncomment below for single-arm mode (set dual_arm_mode to false)
+#  robot:
+#    ip: &ip "192.168.131.11" # robot_ip
+#    use_gripper: *use_gripper
+#    close_threshold: 0.7 # threshold to determine gripper open/close
+#    gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
+#    gripper_port: &gripper_port "/dev/ur5e_left_gripper" # gripper_port
+#    gripper_reverse: &gripper_reverse False  # If gripper moves opposite, flip this value
+
+  # ========== DUAL ARM ROBOT CONFIGURATION ==========
+  # Used when dual_arm_mode is true
   robot:
     left_arm:
       ip: &ip_left "192.168.131.11" # robot_ip for left arm
@@ -58,10 +88,19 @@ record:
     save_meta_period: 1 # Save metadata after every N episodes
 
   cameras:
-    left_wrist_cam_serial: "944622073455" # left arm wrist camera serial number
+    # ========== SINGLE ARM CAMERA CONFIGURATION ==========
+    # Uncomment below for single-arm mode (set dual_arm_mode to false)
+#    wrist_cam_serial: "944622073455" # wrist camera serial number
+#    exterior_cam_serial: "213522070689" # exterior camera serial number
+
+    # ========== DUAL ARM CAMERA CONFIGURATION ==========
+    # Used when dual_arm_mode is true
+    left_wrist_cam_serial: "347622073802" # left arm wrist camera serial number
     left_exterior_cam_serial: "213522070689" # left arm exterior camera serial number
-    right_wrist_cam_serial: "XXXXXX" # right arm wrist camera serial number - UPDATE THIS
+    right_wrist_cam_serial: "348122071700" # right arm wrist camera serial number - UPDATE THIS
     right_exterior_cam_serial: "YYYYYY" # right arm exterior camera serial number - UPDATE THIS
+
+    # Common camera settings for both modes
     width: 424 # 640 424
     height: 240 # 360 240
 
