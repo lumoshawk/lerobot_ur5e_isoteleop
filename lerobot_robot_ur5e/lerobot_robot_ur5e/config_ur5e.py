@@ -14,4 +14,5 @@ class UR5eConfig(RobotConfig):
     gripper_bin_threshold: float = 0.98
     debug: bool = True
     close_threshold: float = 0.7
+    start_position: list[float] = field(default_factory=lambda: [0, -30, 60, -100, 130, 0])  # degrees
     cameras: dict[str, CameraConfig] = field(default_factory=dict)

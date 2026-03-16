@@ -21,6 +21,7 @@ import shutil
 from datetime import datetime
 
 from rtde_receive import RTDEReceiveInterface
+from rtde_control import RTDEControlInterface
 from lerobot_teleoperator_ur5e.dynamixel import DynamixelDriver
 
 # ------------------------ Logging Setup ------------------------ #
@@ -29,12 +30,12 @@ logger = logging.getLogger(__name__)
 
 # ------------------------ Constants ------------------------ #
 # Predefined calibration position for hardware offset calibration (in degrees)
-CALIBRATION_POSITION_DEG = [-45, -90, 0, -90, 0, 0]
+CALIBRATION_POSITION_DEG = [-90, -90, 0, -90, 0, 0]
 CALIBRATION_POSITION_RAD = np.deg2rad(CALIBRATION_POSITION_DEG)
 
 # Number of samples to take for hardware calibration
 NUM_HARDWARE_SAMPLES = 3
-SAMPLE_DELAY_SEC = 1.0
+SAMPLE_DELAY_SEC = 2.0
 
 # ------------------------ Robot Functions ------------------------ #
 def connect_to_ur5e(robot_ip: str) -> Optional[RTDEReceiveInterface]:
@@ -203,6 +204,7 @@ def calibrate_hardware_offsets(driver: DynamixelDriver, rtde_r:RTDEReceiveInterf
     logger.info("4. The system will take 3 samples with 1 second intervals")
 
     input("\n▶ Press ENTER when both arms are in position...")
+    time.sleep(5)
 
     # Collect multiple samples
     logger.info(f"\nCollecting {NUM_HARDWARE_SAMPLES} samples...")
@@ -528,14 +530,36 @@ class CalibrationConfig:
 
 #These are for run_record to call
 def get_start_joints(cfg) -> List[float]:
-    """Connects to the UR5e robot and retrieves current joint positions."""
+    """Connects to the UR5e robot, moves to start position, and retrieves joint positions."""
     try:
         logger.info("\n===== [ROBOT] Connecting to UR5e robot =====")
         rtde_r = RTDEReceiveInterface(cfg.robot_ip)
+        rtde_c = RTDEControlInterface(cfg.robot_ip)
+
         joint_positions = rtde_r.getActualQ()
         logger.info(f"[ROBOT] Current joint positions: {joint_positions}")
         logger.info("===== [ROBOT] UR5e connected successfully =====\n")
-        return joint_positions
+
+        start_position_deg = getattr(cfg, 'start_position', [0, -30, 60, -100, 130, 0])
+        start_position_rad = np.deg2rad(start_position_deg)
+
+        logger.info("===== [ROBOT] Moving to start position =====")
+        logger.info(f"[ROBOT] Target position (deg): {start_position_deg}")
+        logger.info(f"[ROBOT] Target position (rad): {[round(r, 4) for r in start_position_rad]}")
+
+        # Move to start position with moveJ (joint space movement)
+        rtde_c.moveJ(start_position_rad, speed=0.5, acceleration=0.5)
+
+        # Get final position after movement
+        final_position = rtde_r.getActualQ()
+        formatted_final = [round(j, 4) for j in final_position]
+        logger.info(f"[ROBOT] Final joint positions: {formatted_final}")
+        logger.info("===== [ROBOT] Start position reached =====\n")
+
+        # Disconnect control interface
+        rtde_c.disconnect()
+
+        return final_position
     except Exception as e:
         logger.error("===== [ERROR] Failed to connect to UR5e robot =====")
         logger.error(f"Exception: {e}\n")

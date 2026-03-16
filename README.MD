@@ -212,3 +212,50 @@ lerobot-edit-dataset
 ```bash
 tools-check-dataset
 ```
+
+
+## datastructure
+What Data is Saved
+Data is broken down into Actions (commands sent to the robot) and Observations (state read from the robot and sensors at each frame).
+In a single-arm setup, the keys are as follows. (Note: If dual_arm_mode is enabled, all of these features are recorded for both arms and are prefixed with left_ and right_):
+1. Action Features (The commands sent)
+
+Joint Commands: joint_1.pos to joint_6.pos (float values).
+
+Gripper Command: gripper_position (float value mapping to the desired open/close state).
+2. Observation Features (The recorded state at the time of frame)
+
+Joint State:
+
+joint_{1-6}.pos: Actual joint positions.
+
+joint_{1-6}.vel: Actual joint velocities.
+
+joint_{1-6}.acc: Target joint accelerations.
+
+joint_{1-6}.force: Joint forces/torques.
+
+TCP (Tool Center Point) State:
+
+tcp_pose.[x, y, z, rx, ry, rz]: Actual spatial pose of the tool.
+
+tcp_speed.[x, y, z, rx, ry, rz]: Actual speed of the tool.
+
+tcp_acc.[x, y, z]: Tool center point acceleration (3 axes).
+
+tcp_force.[x, y, z, rx, ry, rz]: Actual force experienced at the tool.
+
+Gripper State:
+
+gripper_raw_position: The actual physical float position of the gripper [0, 1].
+
+gripper_raw_bin: Binarized actual position (e.g., 0 or 1 based on threshold).
+
+gripper_action_bin: The previously requested command bin.
+Camera Observations (Video Streams):
+
+Visual data is captured via the configured RealSense cameras.
+
+Frame buffers are saved (typically as .mp4 video files to save space, handled internally by LeRobotDataset using use_videos=True).
+
+Depending on the config, this includes arrays for the configured cameras, e.g., wrist_image and exterior_image (shape: Height x Width x 3 RGB).

@@ -121,7 +121,14 @@ def check_joint_offsets(record_cfg: RecordConfig, arm_name: str = None):
         raise ValueError("joint_offsets is None. Please check teleop_joint_offsets.py output.")
 
     # Create a temporary config object for get_start_joints
-    temp_cfg = type('obj', (object,), {'robot_ip': robot_ip})()
+    if record_cfg.is_dual_arm:
+        if arm_name == "left":
+            start_pos = record_cfg.robot_left.get("start_position", [0, -30, 60, -100, 130, 0])
+        else:
+            start_pos = record_cfg.robot_right.get("start_position", [0, -30, 60, -100, 130, 0])
+        temp_cfg = type('obj', (object,), {'robot_ip': robot_ip, 'start_position': start_pos})()
+    else:
+        temp_cfg = type('obj', (object,), {'robot_ip': robot_ip})()
     start_joints = get_start_joints(temp_cfg)
     if start_joints is None:
         raise RuntimeError("Failed to retrieve start joints from UR5e robot.")
@@ -265,7 +272,8 @@ def run_record(record_cfg: RecordConfig):
                 close_threshold=record_cfg.robot_left["close_threshold"],
                 use_gripper=record_cfg.robot_left["use_gripper"],
                 gripper_reverse=record_cfg.robot_left["gripper_reverse"],
-                gripper_bin_threshold=record_cfg.robot_left["gripper_bin_threshold"])
+                gripper_bin_threshold=record_cfg.robot_left["gripper_bin_threshold"],
+                start_position=record_cfg.robot_left.get("start_position", [0, -30, 60, -100, 130, 0]))
 
             right_robot_config = UR5eConfig(
                 robot_ip=record_cfg.robot_right["ip"],
@@ -275,7 +283,8 @@ def run_record(record_cfg: RecordConfig):
                 close_threshold=record_cfg.robot_right["close_threshold"],
                 use_gripper=record_cfg.robot_right["use_gripper"],
                 gripper_reverse=record_cfg.robot_right["gripper_reverse"],
-                gripper_bin_threshold=record_cfg.robot_right["gripper_bin_threshold"])
+                gripper_bin_threshold=record_cfg.robot_right["gripper_bin_threshold"],
+                start_position=record_cfg.robot_right.get("start_position", [0, -30, 60, -100, 130, 0]))
 
             # Initialize dual-arm robot and teleoperator
             robot = DualUR5e(left_robot_config, right_robot_config)
@@ -361,6 +370,36 @@ def run_record(record_cfg: RecordConfig):
         robot.connect()
         teleop.connect()
 
+        # Set up 'p' key listener to print current teleop action and UR5e positions
+        p_listener = None
+        try:
+            from pynput import keyboard as _kb
+
+            def _on_p_press(key):
+                try:
+                    if not (hasattr(key, 'char') and key.char == 'p'):
+                        return
+                    action = teleop.get_action()
+                    obs = robot.get_observation()
+                    pos_keys = [k for k in obs if k.endswith('.pos') or k.startswith('tcp_pose')]
+                    print("\n====== [POSITION SNAPSHOT] ======")
+                    print("  -- Teleop action --")
+                    for k, v in action.items():
+                        print(f"    {k}: {round(float(v), 6) if hasattr(v, '__float__') else v}")
+                    print("  -- UR5e observation (pos/tcp) --")
+                    for k in pos_keys:
+                        v = obs[k]
+                        print(f"    {k}: {round(float(v), 6) if hasattr(v, '__float__') else v}")
+                    print("=================================\n")
+                except Exception as e:
+                    print(f"[p-key] Error reading positions: {e}")
+
+            p_listener = _kb.Listener(on_press=_on_p_press)
+            p_listener.start()
+            logging.info("Press 'p' at any time to print current teleop action and UR5e positions.")
+        except Exception:
+            logging.warning("Could not start 'p' key listener (headless or pynput unavailable).")
+
         episode_idx = 0
 
         while episode_idx < record_cfg.num_episodes and not events["stop_recording"]:
@@ -416,6 +455,8 @@ def run_record(record_cfg: RecordConfig):
 
         # Clean up
         logging.info("Stop recording")
+        if p_listener is not None:
+            p_listener.stop()
         robot.disconnect()
         teleop.disconnect()
         dataset.finalize()

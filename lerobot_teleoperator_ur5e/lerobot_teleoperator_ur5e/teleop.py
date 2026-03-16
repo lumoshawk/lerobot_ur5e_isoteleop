@@ -36,7 +36,7 @@ class UR5eTeleop(Teleoperator):
         super().__init__(config)
         self.cfg = config
         self._is_connected = False
-        self.is_dual_arm = hasattr(config, 'left_arm') and hasattr(config, 'right_arm')
+        self.is_dual_arm = config.left_arm is not None and config.right_arm is not None
 
     @property
     def action_features(self) -> dict:

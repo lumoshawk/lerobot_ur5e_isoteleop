@@ -2,6 +2,7 @@ import logging
 import time
 from typing import Any
 import threading
+import numpy as np
 from rtde_control import RTDEControlInterface
 from rtde_receive import RTDEReceiveInterface
 
@@ -73,7 +74,7 @@ class UR5e(Robot):
 
     def _check_ur5e_connection(self, robot_ip: str):
         try:
-            logger.info("\n===== [ROBOT] Connecting to UR5e robot =====")
+            logger.info(f"\n===== [ROBOT] Connecting to UR5e robot at {robot_ip} =====")
             rtde_r = RTDEReceiveInterface(robot_ip)
             rtde_c = RTDEControlInterface(robot_ip)
 
@@ -82,6 +83,23 @@ class UR5e(Robot):
                 formatted_joints = [round(j, 4) for j in joint_positions]
                 logger.info(f"[ROBOT] Current joint positions: {formatted_joints}")
                 logger.info("===== [ROBOT] UR5e connected successfully =====\n")
+
+                # Move to start position (configured per arm in degrees)
+                start_position_deg = self.config.start_position
+                start_position_rad = np.deg2rad(start_position_deg)
+
+                logger.info("===== [ROBOT] Moving to start position =====")
+                logger.info(f"[ROBOT] Target position (deg): {start_position_deg} for {self.config.robot_ip}")
+                logger.info(f"[ROBOT] Target position (rad): {[round(r, 4) for r in start_position_rad]}")
+
+                # Move to start position with moveJ (joint space movement)
+                rtde_c.moveJ(start_position_rad, speed=0.5, acceleration=0.5)
+
+                # Verify final position
+                final_position = rtde_r.getActualQ()
+                formatted_final = [round(j, 4) for j in final_position]
+                logger.info(f"[ROBOT] Final joint positions: {formatted_final}")
+                logger.info("===== [ROBOT] Start position reached =====\n")
             else:
                 logger.info("===== [ERROR] Failed to read joint positions. Check connection or remote control mode =====")
 

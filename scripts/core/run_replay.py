@@ -43,6 +43,7 @@ def run_replay(replay_cfg: ReplayConfig):
             debug=replay_cfg.debug,
             use_gripper=replay_cfg.robot_left["use_gripper"],
             gripper_reverse=replay_cfg.robot_left["gripper_reverse"],
+            start_position=replay_cfg.robot_left.get("start_position", [0, -30, 60, -100, 130, 0]),
         )
 
         right_robot_config = UR5eConfig(
@@ -51,6 +52,7 @@ def run_replay(replay_cfg: ReplayConfig):
             debug=replay_cfg.debug,
             use_gripper=replay_cfg.robot_right["use_gripper"],
             gripper_reverse=replay_cfg.robot_right["gripper_reverse"],
+            start_position=replay_cfg.robot_right.get("start_position", [0, -30, 60, -100, 130, 0]),
         )
 
         robot = DualUR5e(left_robot_config, right_robot_config)
