@@ -1,4 +1,6 @@
 import yaml
+import time
+import numpy as np
 from pathlib import Path
 from typing import Dict, Any
 from scripts.utils.dataset_utils import generate_dataset_name, update_dataset_info
@@ -199,6 +201,74 @@ def handle_incomplete_dataset(dataset_path):
         else:
             print("====== [KEEP] Incomplete dataset folder retained, please check manually. ======")
 
+def enter_freedrive(robot, is_dual_arm):
+    if is_dual_arm:
+        try:
+            robot.left_arm._arm["rtde_c"].servoStop()
+        except Exception:
+            pass
+        try:
+            robot.right_arm._arm["rtde_c"].servoStop()
+        except Exception:
+            pass
+        time.sleep(0.2)
+        robot.left_arm._arm["rtde_c"].stopScript()
+        robot.right_arm._arm["rtde_c"].stopScript()
+        time.sleep(0.3)
+        robot.left_arm._arm["rtde_c"].reuploadScript()
+        robot.right_arm._arm["rtde_c"].reuploadScript()
+        time.sleep(0.3)
+        ok_l = robot.left_arm._arm["rtde_c"].freedriveMode()
+        ok_r = robot.right_arm._arm["rtde_c"].freedriveMode()
+        logging.info(f"[FREEDRIVE] freedriveMode returned: left={ok_l}, right={ok_r}")
+    else:
+        try:
+            robot._arm["rtde_c"].servoStop()
+        except Exception:
+            pass
+        time.sleep(0.2)
+        robot._arm["rtde_c"].stopScript()
+        time.sleep(0.3)
+        robot._arm["rtde_c"].reuploadScript()
+        time.sleep(0.3)
+        ok = robot._arm["rtde_c"].freedriveMode()
+        logging.info(f"[FREEDRIVE] freedriveMode returned: {ok}")
+
+def exit_freedrive_and_return(robot, is_dual_arm):
+    if is_dual_arm:
+        robot.left_arm._arm["rtde_c"].endFreedriveMode()
+        robot.right_arm._arm["rtde_c"].endFreedriveMode()
+        time.sleep(0.2)
+        robot.left_arm._arm["rtde_c"].moveJ(np.deg2rad(robot.left_arm.config.start_position).tolist(), 0.5, 0.5)
+        robot.right_arm._arm["rtde_c"].moveJ(np.deg2rad(robot.right_arm.config.start_position).tolist(), 0.5, 0.5)
+    else:
+        robot._arm["rtde_c"].endFreedriveMode()
+        time.sleep(0.2)
+        robot._arm["rtde_c"].moveJ(np.deg2rad(robot.config.start_position).tolist(), 0.5, 0.5)
+
+def handle_freedrive_if_requested(freedrive_state, events, robot, is_dual_arm, dataset):
+    if not freedrive_state["request_enter"]:
+        return False
+    freedrive_state["request_enter"] = False
+    events["exit_early"] = False
+
+    logging.info("====== [FREEDRIVE] Entering dragging demo mode. Press 'b' to return. ======")
+    enter_freedrive(robot, is_dual_arm)
+    freedrive_state["active"] = True
+
+    while not freedrive_state["request_exit"] and not events["stop_recording"]:
+        time.sleep(0.1)
+
+    freedrive_state["request_exit"] = False
+    logging.info("====== [FREEDRIVE] Returning to start position... ======")
+    exit_freedrive_and_return(robot, is_dual_arm)
+    freedrive_state["active"] = False
+    logging.info("====== [FREEDRIVE] Resumed. Ready for teleop. ======")
+
+    if dataset is not None:
+        dataset.clear_episode_buffer()
+    return True
+
 def run_record(record_cfg: RecordConfig):
     try:
         dataset_name, data_version = generate_dataset_name(record_cfg)
@@ -372,35 +442,44 @@ def run_record(record_cfg: RecordConfig):
         robot.connect()
         teleop.connect()
 
-        # Set up 'p' key listener to print current teleop action and UR5e positions
+        # Set up key listener for 'p' (position snapshot), 'm' (freedrive), 'b' (back to start)
+        freedrive_state = {"active": False, "request_enter": False, "request_exit": False}
         p_listener = None
         try:
             from pynput import keyboard as _kb
 
-            def _on_p_press(key):
+            def _on_key_press(key):
                 try:
-                    if not (hasattr(key, 'char') and key.char == 'p'):
+                    if not hasattr(key, 'char') or key.char is None:
                         return
-                    action = teleop.get_action()
-                    obs = robot.get_observation()
-                    pos_keys = [k for k in obs if k.endswith('.pos') or k.startswith('tcp_pose')]
-                    print("\n====== [POSITION SNAPSHOT] ======")
-                    print("  -- Teleop action --")
-                    for k, v in action.items():
-                        print(f"    {k}: {round(float(v), 6) if hasattr(v, '__float__') else v}")
-                    print("  -- UR5e observation (pos/tcp) --")
-                    for k in pos_keys:
-                        v = obs[k]
-                        print(f"    {k}: {round(float(v), 6) if hasattr(v, '__float__') else v}")
-                    print("=================================\n")
+                    if key.char == 'p':
+                        action = teleop.get_action()
+                        obs = robot.get_observation()
+                        pos_keys = [k for k in obs if k.endswith('.pos') or k.startswith('tcp_pose')]
+                        print("\n====== [POSITION SNAPSHOT] ======")
+                        print("  -- Teleop action --")
+                        for k, v in action.items():
+                            print(f"    {k}: {round(float(v), 6) if hasattr(v, '__float__') else v}")
+                        print("  -- UR5e observation (pos/tcp) --")
+                        for k in pos_keys:
+                            v = obs[k]
+                            print(f"    {k}: {round(float(v), 6) if hasattr(v, '__float__') else v}")
+                        print("=================================\n")
+                    elif key.char == 'm' and not freedrive_state["active"]:
+                        print("\n[FREEDRIVE] 'm' pressed — requesting freedrive mode...")
+                        freedrive_state["request_enter"] = True
+                        events["exit_early"] = True
+                    elif key.char == 'b' and freedrive_state["active"]:
+                        print("\n[FREEDRIVE] 'b' pressed — exiting freedrive, returning to start...")
+                        freedrive_state["request_exit"] = True
                 except Exception as e:
-                    print(f"[p-key] Error reading positions: {e}")
+                    print(f"[key-listener] Error: {e}")
 
-            p_listener = _kb.Listener(on_press=_on_p_press)
+            p_listener = _kb.Listener(on_press=_on_key_press)
             p_listener.start()
-            logging.info("Press 'p' at any time to print current teleop action and UR5e positions.")
+            logging.info("Press 'p' for position snapshot, 'm' for freedrive mode, 'b' to return from freedrive.")
         except Exception:
-            logging.warning("Could not start 'p' key listener (headless or pynput unavailable).")
+            logging.warning("Could not start key listener (headless or pynput unavailable).")
 
         episode_idx = 0
 
@@ -420,6 +499,10 @@ def run_record(record_cfg: RecordConfig):
                 display_data=record_cfg.display,
             )
 
+            # If freedrive was requested mid-episode, handle it and restart episode
+            if handle_freedrive_if_requested(freedrive_state, events, robot, record_cfg.is_dual_arm, dataset):
+                continue
+
             if events["rerecord_episode"]:
                 logging.info("Re-recording episode")
                 events["rerecord_episode"] = False
@@ -432,10 +515,13 @@ def run_record(record_cfg: RecordConfig):
             # Reset the environment if not stopping or re-recording
             if not events["stop_recording"] and (episode_idx < record_cfg.num_episodes - 1 or events["rerecord_episode"]):
                 while True:
+                    if freedrive_state["request_enter"]:
+                        handle_freedrive_if_requested(freedrive_state, events, robot, record_cfg.is_dual_arm, None)
+                        continue
                     termios.tcflush(sys.stdin, termios.TCIFLUSH)
                     user_input = input("====== [WAIT] Press Enter to reset the environment ======")
                     if user_input == "":
-                        break  
+                        break
                     else:
                         logging.info("====== [WARNING] Please press only Enter to continue ======")
 
