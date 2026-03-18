@@ -551,6 +551,7 @@ def get_start_joints(cfg) -> List[float]:
         rtde_c.moveJ(start_position_rad, speed=0.5, acceleration=0.5)
 
         # Get final position after movement
+
         final_position = rtde_r.getActualQ()
         formatted_final = [round(j, 4) for j in final_position]
         logger.info(f"[ROBOT] Final joint positions: {formatted_final}")

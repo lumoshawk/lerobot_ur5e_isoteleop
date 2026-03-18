@@ -70,6 +70,7 @@ class RecordConfig:
 
             # Single-arm robot config
             self.robot_ip: str = robot["ip"]
+            self.start_position = robot.get("start_position", [0, -30, 60, -100, 130, 0])
             self.gripper_port: str = robot["gripper_port"]
             self.use_gripper: str = robot["use_gripper"]
             self.close_threshold = robot["close_threshold"]
@@ -128,7 +129,7 @@ def check_joint_offsets(record_cfg: RecordConfig, arm_name: str = None):
             start_pos = record_cfg.robot_right.get("start_position", [0, -30, 60, -100, 130, 0])
         temp_cfg = type('obj', (object,), {'robot_ip': robot_ip, 'start_position': start_pos})()
     else:
-        temp_cfg = type('obj', (object,), {'robot_ip': robot_ip})()
+        temp_cfg = type('obj', (object,), {'robot_ip': robot_ip, 'start_position': record_cfg.start_position})()
     start_joints = get_start_joints(temp_cfg)
     if start_joints is None:
         raise RuntimeError("Failed to retrieve start joints from UR5e robot.")
@@ -329,7 +330,8 @@ def run_record(record_cfg: RecordConfig):
                 close_threshold=record_cfg.close_threshold,
                 use_gripper=record_cfg.use_gripper,
                 gripper_reverse=record_cfg.gripper_reverse,
-                gripper_bin_threshold=record_cfg.gripper_bin_threshold)
+                gripper_bin_threshold=record_cfg.gripper_bin_threshold,
+                start_position=record_cfg.start_position)
 
             robot = UR5e(robot_config)
             teleop = UR5eTeleop(teleop_config)
