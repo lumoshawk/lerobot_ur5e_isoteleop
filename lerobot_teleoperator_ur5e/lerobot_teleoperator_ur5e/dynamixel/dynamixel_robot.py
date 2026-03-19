@@ -2,6 +2,7 @@ from typing import Dict, Optional, Sequence, Tuple
 
 import numpy as np
 from .robot import Robot
+from .driver import PID_STIFF, PID_SOFT
 
 
 class DynamixelRobot(Robot):
@@ -111,6 +112,44 @@ class DynamixelRobot(Robot):
 
         return {
             **obs_dict,
-            "gripper_position": joint_state[-1],  
+            "gripper_position": joint_state[-1],
         }
+
+    def set_pid_profile(self, profile: str):
+        """Switch PID profile. profile: 'stiff' or 'soft'.
+        PID gain registers (addr 80-84) are in RAM, writable with torque on.
+        """
+        gains = PID_STIFF if profile == "stiff" else PID_SOFT
+        self._driver.set_pid_gains(gains["p"], gains["i"], gains["d"])
+
+    def command_from_ur5e_pos(self, ur5e_joints_rad: np.ndarray, gripper_pos: float = None):
+        """Command mArm to match UR5e joint positions (reverse offset transform).
+        ur5e_joints_rad: 6-element array of UR5e joint positions in radians.
+        gripper_pos: optional gripper value in [0,1] range.
+
+        Forward: get_joint_state does:
+          raw_with_hw = get_positions(hw_offsets)  # raw_rad + hw_offsets (in deg then back to rad)
+          ur5e = (raw_with_hw - joint_offsets) * joint_signs
+
+        Reverse:
+          raw_with_hw = ur5e / joint_signs + joint_offsets
+          raw_servo_deg = degrees(raw_with_hw) - hardware_offsets
+          raw_servo = radians(raw_servo_deg)
+          set_joints(raw_servo)
+        """
+        # Step 1: reverse signs and joint_offsets
+        raw_with_hw = ur5e_joints_rad / self._joint_signs[:6] + self._joint_offsets[:6]
+        # Step 2: remove hardware offsets (they are added in degrees in get_positions)
+        raw_deg = np.degrees(raw_with_hw)
+        raw_deg -= np.array(self._hardware_offsets[:6])
+        raw = np.radians(raw_deg)
+
+        if gripper_pos is not None and self.gripper_open_close is not None:
+            g_raw = gripper_pos * (self.gripper_open_close[1] - self.gripper_open_close[0]) + self.gripper_open_close[0]
+            raw = np.append(raw, g_raw)
+        elif self.gripper_open_close is not None:
+            # Keep current gripper position — read raw gripper directly from driver
+            all_joints = self._driver.get_joints()
+            raw = np.append(raw, all_joints[6])  # gripper is the 7th servo
+        self._driver.set_joints(raw.tolist())
 

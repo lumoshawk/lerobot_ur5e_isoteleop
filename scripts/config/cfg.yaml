@@ -24,7 +24,7 @@ record:
 
   robot:
     ip: &ip "192.168.131.11" # robot_ip
-    start_position: [ 17, -95, 117, -147, 146, 22 ] # degrees
+    start_position: [ 17, -95, 117, -147, 146, 22 ]  # degrees
     use_gripper: *use_gripper
     close_threshold: 0.9 # threshold to determine gripper open/close
     gripper_bin_threshold: 0.98 # threshold to determine gripper is closed

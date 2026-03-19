@@ -142,6 +142,45 @@ class UR5eTeleop(Teleoperator):
     def send_feedback(self, feedback: dict[str, Any]) -> None:
         pass
 
+    def set_marm_pid_profile(self, profile: str, arm: str = None):
+        """Set PID profile on mArm. profile: 'stiff' or 'soft'. arm: 'left'/'right' for dual-arm."""
+        if self.is_dual_arm:
+            if arm == "left" or arm is None:
+                self.dynamixel_robot_left.set_pid_profile(profile)
+            if arm == "right" or arm is None:
+                self.dynamixel_robot_right.set_pid_profile(profile)
+        else:
+            self.dynamixel_robot.set_pid_profile(profile)
+
+    def set_marm_torque(self, enable: bool):
+        """Enable/disable torque on mArm."""
+        if self.is_dual_arm:
+            self.dual_arm_robot.set_torque_mode(enable)
+        else:
+            self.dynamixel_robot.set_torque_mode(enable)
+
+    def command_marm_from_ur5e(self, ur5e_joints_rad, gripper_pos=None, arm: str = None):
+        """Command mArm to follow UR5e joint positions. For dual-arm, pass arm='left'/'right'."""
+        import numpy as np
+        joints = np.array(ur5e_joints_rad)
+        if self.is_dual_arm:
+            if arm == "left":
+                self.dynamixel_robot_left.command_from_ur5e_pos(joints, gripper_pos)
+            elif arm == "right":
+                self.dynamixel_robot_right.command_from_ur5e_pos(joints, gripper_pos)
+        else:
+            self.dynamixel_robot.command_from_ur5e_pos(joints, gripper_pos)
+
+    def get_marm_joint_state(self, arm: str = None):
+        """Get mArm joint state (in UR5e space). For dual-arm, pass arm='left'/'right'."""
+        if self.is_dual_arm:
+            if arm == "left":
+                return self.dynamixel_robot_left.get_joint_state()
+            else:
+                return self.dynamixel_robot_right.get_joint_state()
+        else:
+            return self.dynamixel_robot.get_joint_state()
+
     def disconnect(self) -> None:
         if not self.is_connected:
             return

@@ -246,23 +246,151 @@ def exit_freedrive_and_return(robot, is_dual_arm):
         time.sleep(0.2)
         robot._arm["rtde_c"].moveJ(np.deg2rad(robot.config.start_position).tolist(), 0.5, 0.5)
 
-def handle_freedrive_if_requested(freedrive_state, events, robot, is_dual_arm, dataset):
+def exit_freedrive_only(robot, is_dual_arm):
+    """Exit freedrive without returning to start position (for transitioning to teleop sub-mode)."""
+    if is_dual_arm:
+        robot.left_arm._arm["rtde_c"].endFreedriveMode()
+        robot.right_arm._arm["rtde_c"].endFreedriveMode()
+    else:
+        robot._arm["rtde_c"].endFreedriveMode()
+    time.sleep(0.2)
+
+def _read_ur5e_joints(robot, is_dual_arm):
+    """Read current UR5e joint positions."""
+    if is_dual_arm:
+        left_q = robot.left_arm._arm["rtde_r"].getActualQ()
+        right_q = robot.right_arm._arm["rtde_r"].getActualQ()
+        return left_q, right_q
+    else:
+        return robot._arm["rtde_r"].getActualQ()
+
+def _servo_ur5e(robot, joint_positions, is_dual_arm):
+    """Send servoJ command to UR5e."""
+    dt = 0.002
+    lookahead = 0.2
+    gain = 100
+    vel = 0.5
+    accel = 0.5
+    if is_dual_arm:
+        left_pos, right_pos = joint_positions
+        t_l = robot.left_arm._arm["rtde_c"].initPeriod()
+        robot.left_arm._arm["rtde_c"].servoJ(list(left_pos), vel, accel, dt, lookahead, gain)
+        robot.left_arm._arm["rtde_c"].waitPeriod(t_l)
+        t_r = robot.right_arm._arm["rtde_c"].initPeriod()
+        robot.right_arm._arm["rtde_c"].servoJ(list(right_pos), vel, accel, dt, lookahead, gain)
+        robot.right_arm._arm["rtde_c"].waitPeriod(t_r)
+    else:
+        t_start = robot._arm["rtde_c"].initPeriod()
+        robot._arm["rtde_c"].servoJ(list(joint_positions), vel, accel, dt, lookahead, gain)
+        robot._arm["rtde_c"].waitPeriod(t_start)
+
+def handle_freedrive_if_requested(freedrive_state, events, robot, is_dual_arm, teleop, dataset):
     if not freedrive_state["request_enter"]:
         return False
     freedrive_state["request_enter"] = False
     events["exit_early"] = False
 
-    logging.info("====== [FREEDRIVE] Entering dragging demo mode. Press 'b' to return. ======")
+    logging.info("====== [FREEDRIVE] Entering freedrive mode with mArm following. ======")
+    logging.info("  'i' = teleop sub-mode | 'o' = back to freedrive | 'b' = exit freedrive")
+
+    # Enter freedrive: UR5e freedrive + mArm stiff tracking
     enter_freedrive(robot, is_dual_arm)
+    teleop.set_marm_pid_profile("stiff")
+    teleop.set_marm_torque(True)
     freedrive_state["active"] = True
+    freedrive_state["sub_mode"] = "freedrive"
 
-    while not freedrive_state["request_exit"] and not events["stop_recording"]:
-        time.sleep(0.1)
+    try:
+        while not freedrive_state["request_exit"] and not events["stop_recording"]:
+            if freedrive_state["sub_mode"] == "freedrive":
+                # mArm follows UR5e
+                try:
+                    if is_dual_arm:
+                        left_q, right_q = _read_ur5e_joints(robot, True)
+                        teleop.command_marm_from_ur5e(left_q[:6], arm="left")
+                        teleop.command_marm_from_ur5e(right_q[:6], arm="right")
+                    else:
+                        ur5e_q = _read_ur5e_joints(robot, False)
+                        teleop.command_marm_from_ur5e(ur5e_q[:6])
+                except RuntimeError as e:
+                    logging.warning(f"[FREEDRIVE] mArm command failed (transient): {e}")
 
+                # Check for teleop sub-mode request
+                if freedrive_state.get("request_teleop"):
+                    freedrive_state["request_teleop"] = False
+                    logging.info("[FREEDRIVE] Switching to teleop sub-mode (mArm soft, UR5e follows mArm)...")
+                    exit_freedrive_only(robot, is_dual_arm)
+                    teleop.set_marm_pid_profile("soft")
+                    freedrive_state["sub_mode"] = "teleop"
+                    logging.info("[FREEDRIVE] Teleop sub-mode active. 'o' to return to freedrive, 'b' to exit.")
+
+                time.sleep(0.02)  # ~50Hz
+
+            elif freedrive_state["sub_mode"] == "teleop":
+                # UR5e follows mArm (normal teleop direction)
+                try:
+                    if is_dual_arm:
+                        left_state = teleop.get_marm_joint_state(arm="left")
+                        right_state = teleop.get_marm_joint_state(arm="right")
+                        _servo_ur5e(robot, (left_state[:6].tolist(), right_state[:6].tolist()), True)
+                    else:
+                        marm_state = teleop.get_marm_joint_state()
+                        _servo_ur5e(robot, marm_state[:6].tolist(), False)
+                except RuntimeError as e:
+                    logging.warning(f"[FREEDRIVE] servo command failed (transient): {e}")
+
+                # Check for freedrive sub-mode request
+                if freedrive_state.get("request_freedrive_sub"):
+                    freedrive_state["request_freedrive_sub"] = False
+                    logging.info("[FREEDRIVE] Switching back to freedrive (mArm stiff, follows UR5e)...")
+                    # Stop servoJ and re-enter freedrive
+                    enter_freedrive(robot, is_dual_arm)
+                    teleop.set_marm_pid_profile("stiff")
+                    freedrive_state["sub_mode"] = "freedrive"
+                    logging.info("[FREEDRIVE] Freedrive active. 'i' for teleop, 'b' to exit.")
+
+                time.sleep(0.02)  # ~50Hz
+
+    except Exception as e:
+        logging.error(f"[FREEDRIVE] Error in freedrive loop: {e}")
+
+    # Exit freedrive
     freedrive_state["request_exit"] = False
-    logging.info("====== [FREEDRIVE] Returning to start position... ======")
-    exit_freedrive_and_return(robot, is_dual_arm)
+    logging.info("====== [FREEDRIVE] Exiting, returning to start position... ======")
+
+    # Restore mArm: disable torque, restore default PID
+    try:
+        teleop.set_marm_torque(False)
+        teleop.set_marm_pid_profile("stiff")  # restore default
+    except Exception:
+        pass
+
+    if freedrive_state["sub_mode"] == "freedrive":
+        exit_freedrive_and_return(robot, is_dual_arm)
+    else:
+        # Was in teleop sub-mode, just stop servo and return
+        if is_dual_arm:
+            try:
+                robot.left_arm._arm["rtde_c"].servoStop()
+            except Exception:
+                pass
+            try:
+                robot.right_arm._arm["rtde_c"].servoStop()
+            except Exception:
+                pass
+            time.sleep(0.2)
+            robot.left_arm._arm["rtde_c"].moveJ(np.deg2rad(robot.left_arm.config.start_position).tolist(), 0.5, 0.5)
+            robot.right_arm._arm["rtde_c"].moveJ(np.deg2rad(robot.right_arm.config.start_position).tolist(), 0.5, 0.5)
+        else:
+            try:
+                robot._arm["rtde_c"].servoStop()
+            except Exception:
+                pass
+            time.sleep(0.2)
+            robot._arm["rtde_c"].moveJ(np.deg2rad(robot.config.start_position).tolist(), 0.5, 0.5)
+
     freedrive_state["active"] = False
+    freedrive_state["sub_mode"] = None
     logging.info("====== [FREEDRIVE] Resumed. Ready for teleop. ======")
 
     if dataset is not None:
@@ -442,8 +570,9 @@ def run_record(record_cfg: RecordConfig):
         robot.connect()
         teleop.connect()
 
-        # Set up key listener for 'p' (position snapshot), 'm' (freedrive), 'b' (back to start)
-        freedrive_state = {"active": False, "request_enter": False, "request_exit": False}
+        # Set up key listener for 'p' (position snapshot), 'm' (freedrive), 'b' (back to start), 'i' (teleop sub-mode), 'o' (freedrive sub-mode)
+        freedrive_state = {"active": False, "request_enter": False, "request_exit": False,
+                           "sub_mode": None, "request_teleop": False, "request_freedrive_sub": False}
         p_listener = None
         try:
             from pynput import keyboard as _kb
@@ -472,12 +601,18 @@ def run_record(record_cfg: RecordConfig):
                     elif key.char == 'b' and freedrive_state["active"]:
                         print("\n[FREEDRIVE] 'b' pressed — exiting freedrive, returning to start...")
                         freedrive_state["request_exit"] = True
+                    elif key.char == 'i' and freedrive_state["active"] and freedrive_state["sub_mode"] == "freedrive":
+                        print("\n[FREEDRIVE] 'i' pressed — switching to teleop sub-mode...")
+                        freedrive_state["request_teleop"] = True
+                    elif key.char == 'o' and freedrive_state["active"] and freedrive_state["sub_mode"] == "teleop":
+                        print("\n[FREEDRIVE] 'o' pressed — switching back to freedrive sub-mode...")
+                        freedrive_state["request_freedrive_sub"] = True
                 except Exception as e:
                     print(f"[key-listener] Error: {e}")
 
             p_listener = _kb.Listener(on_press=_on_key_press)
             p_listener.start()
-            logging.info("Press 'p' for position snapshot, 'm' for freedrive mode, 'b' to return from freedrive.")
+            logging.info("Press 'p' for position snapshot, 'm' for freedrive mode, 'b' to exit freedrive, 'i' teleop sub-mode, 'o' freedrive sub-mode.")
         except Exception:
             logging.warning("Could not start key listener (headless or pynput unavailable).")
 
@@ -500,7 +635,7 @@ def run_record(record_cfg: RecordConfig):
             )
 
             # If freedrive was requested mid-episode, handle it and restart episode
-            if handle_freedrive_if_requested(freedrive_state, events, robot, record_cfg.is_dual_arm, dataset):
+            if handle_freedrive_if_requested(freedrive_state, events, robot, record_cfg.is_dual_arm, teleop, dataset):
                 continue
 
             if events["rerecord_episode"]:
@@ -516,7 +651,7 @@ def run_record(record_cfg: RecordConfig):
             if not events["stop_recording"] and (episode_idx < record_cfg.num_episodes - 1 or events["rerecord_episode"]):
                 while True:
                     if freedrive_state["request_enter"]:
-                        handle_freedrive_if_requested(freedrive_state, events, robot, record_cfg.is_dual_arm, None)
+                        handle_freedrive_if_requested(freedrive_state, events, robot, record_cfg.is_dual_arm, teleop, None)
                         continue
                     termios.tcflush(sys.stdin, termios.TCIFLUSH)
                     user_input = input("====== [WAIT] Press Enter to reset the environment ======")

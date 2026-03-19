@@ -5,7 +5,7 @@ This avoids port conflicts when both arms use the same serial port.
 
 from typing import Dict, Optional, Sequence
 import numpy as np
-from .driver import DynamixelDriver, FakeDynamixelDriver
+from .driver import DynamixelDriver, FakeDynamixelDriver, PID_STIFF, PID_SOFT
 
 
 class DualArmDynamixelRobot:
@@ -197,3 +197,44 @@ class ArmWrapper:
             **obs_dict,
             "gripper_position": gripper_pos,
         }
+
+    def set_pid_profile(self, profile: str):
+        """Switch PID profile for this arm's servos only. profile: 'stiff' or 'soft'.
+        PID gain registers (addr 80-84) are in RAM, writable with torque on.
+        """
+        gains = PID_STIFF if profile == "stiff" else PID_SOFT
+        self._driver.set_pid_gains_for_ids(self._joint_ids, gains["p"], gains["i"], gains["d"])
+
+    def command_from_ur5e_pos(self, ur5e_joints_rad: np.ndarray, gripper_pos: float = None):
+        """Command this arm to match UR5e joint positions (reverse offset transform).
+
+        Forward (get_joint_state):
+          raw_deg[arm] += hardware_offsets  ->  raw_with_hw (radians)
+          ur5e = (raw_with_hw[arm] - joint_offsets) * joint_signs
+
+        Reverse:
+          raw_with_hw = ur5e / joint_signs + joint_offsets
+          raw_servo_deg = degrees(raw_with_hw) - hardware_offsets
+          raw_servo = radians(raw_servo_deg)
+        """
+        # Step 1: reverse signs and joint_offsets
+        raw_with_hw = ur5e_joints_rad / self._joint_signs[:6] + self._joint_offsets[:6]
+        # Step 2: remove hardware offsets (added in degrees in get_joint_state)
+        raw_deg = np.degrees(raw_with_hw)
+        raw_deg -= np.array(self._hardware_offsets[:6])
+        raw = np.radians(raw_deg)
+
+        # Get current positions for all servos
+        all_positions = self._driver.get_joints()
+
+        # Update positions for this arm's joints
+        for i in range(6):
+            all_positions[self._start_index + i] = raw[i]
+
+        # Handle gripper
+        if gripper_pos is not None and self.gripper_open_close is not None:
+            g_raw = gripper_pos * (self.gripper_open_close[1] - self.gripper_open_close[0]) + self.gripper_open_close[0]
+            gripper_idx = self._start_index + 6  # gripper is after the 6 joints
+            all_positions[gripper_idx] = g_raw
+
+        self._driver.set_joints(all_positions.tolist())

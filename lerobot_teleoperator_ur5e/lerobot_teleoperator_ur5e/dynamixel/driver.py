@@ -36,6 +36,15 @@ ADDR_OPERATING_MODE = 11
 CURRENT_CONTROL_MODE = 0
 POSITION_CONTROL_MODE = 3
 
+# PID gain registers (Protocol 2.0, XM430/XC330 series)
+ADDR_POSITION_D_GAIN = 80
+ADDR_POSITION_I_GAIN = 82
+ADDR_POSITION_P_GAIN = 84
+
+# PID profiles
+PID_STIFF = {"p": 800, "i": 0, "d": 0}
+PID_SOFT = {"p": 100, "i": 0, "d": 0}
+
 # Servo-specific mappings and limits
 TORQUE_TO_CURRENT_MAPPING = {
     "XC330_T288_T": 1158.73,
@@ -68,6 +77,10 @@ class DynamixelDriverProtocol(Protocol):
 
     def set_operating_mode(self, mode: int):
         """Set the operating mode (e.g., CURRENT_CONTROL_MODE or POSITION_CONTROL_MODE)."""
+        ...
+
+    def set_pid_gains(self, p: int, i: int, d: int):
+        """Set Position PID gains. Torque must be disabled first."""
         ...
 
     def verify_operating_mode(self, expected_mode: int):
@@ -135,6 +148,9 @@ class FakeDynamixelDriver(DynamixelDriverProtocol):
         self.set_current(torques)
 
     def set_operating_mode(self, mode: int):
+        pass
+
+    def set_pid_gains(self, p: int, i: int, d: int):
         pass
 
     def verify_operating_mode(self, expected_mode: int):
@@ -313,34 +329,35 @@ class DynamixelDriver(DynamixelDriverProtocol):
             self._fake_joint_angles = np.array(joint_angles)
             return
 
-        for dxl_id, angle in zip(self._ids, joint_angles):
-            # Convert the angle to the appropriate value for the servo
-            position_value = int(angle * 2048 / np.pi)
+        with self._lock:
+            for dxl_id, angle in zip(self._ids, joint_angles):
+                # Convert the angle to the appropriate value for the servo
+                position_value = int(angle * 2048 / np.pi)
 
-            # Allocate goal position value into byte array
-            param_goal_position = [
-                DXL_LOBYTE(DXL_LOWORD(position_value)),
-                DXL_HIBYTE(DXL_LOWORD(position_value)),
-                DXL_LOBYTE(DXL_HIWORD(position_value)),
-                DXL_HIBYTE(DXL_HIWORD(position_value)),
-            ]
+                # Allocate goal position value into byte array
+                param_goal_position = [
+                    DXL_LOBYTE(DXL_LOWORD(position_value)),
+                    DXL_HIBYTE(DXL_LOWORD(position_value)),
+                    DXL_LOBYTE(DXL_HIWORD(position_value)),
+                    DXL_HIBYTE(DXL_HIWORD(position_value)),
+                ]
 
-            # Add goal position value to the Syncwrite parameter storage
-            dxl_addparam_result = self._groupSyncWrite.addParam(
-                dxl_id, param_goal_position
-            )
-            if not dxl_addparam_result:
-                raise RuntimeError(
-                    f"Failed to set joint angle for Dynamixel with ID {dxl_id}"
+                # Add goal position value to the Syncwrite parameter storage
+                dxl_addparam_result = self._groupSyncWrite.addParam(
+                    dxl_id, param_goal_position
                 )
+                if not dxl_addparam_result:
+                    raise RuntimeError(
+                        f"Failed to set joint angle for Dynamixel with ID {dxl_id}"
+                    )
 
-        # Syncwrite goal position
-        dxl_comm_result = self._groupSyncWrite.txPacket()
-        if dxl_comm_result != COMM_SUCCESS:
-            raise RuntimeError("Failed to syncwrite goal position")
+            # Syncwrite goal position
+            dxl_comm_result = self._groupSyncWrite.txPacket()
+            if dxl_comm_result != COMM_SUCCESS:
+                raise RuntimeError("Failed to syncwrite goal position")
 
-        # Clear syncwrite parameter storage
-        self._groupSyncWrite.clearParam()
+            # Clear syncwrite parameter storage
+            self._groupSyncWrite.clearParam()
 
     def set_current(self, currents: Sequence[float]):
         if self._is_fake:
@@ -425,6 +442,35 @@ class DynamixelDriver(DynamixelDriverProtocol):
                     raise RuntimeError(
                         f"Failed to set operating mode for Dynamixel with ID {dxl_id}"
                     )
+
+    def set_pid_gains(self, p: int, i: int, d: int):
+        if self._is_fake:
+            return
+        with self._lock:
+            for dxl_id in self._ids:
+                for addr, val in [(ADDR_POSITION_P_GAIN, p), (ADDR_POSITION_I_GAIN, i), (ADDR_POSITION_D_GAIN, d)]:
+                    dxl_comm_result, dxl_error = self._packetHandler.write2ByteTxRx(
+                        self._portHandler, dxl_id, addr, val
+                    )
+                    if dxl_comm_result != COMM_SUCCESS or dxl_error != 0:
+                        raise RuntimeError(
+                            f"Failed to set PID gain (addr={addr}, val={val}) for Dynamixel ID {dxl_id}"
+                        )
+
+    def set_pid_gains_for_ids(self, ids: list, p: int, i: int, d: int):
+        """Set PID gains for specific servo IDs only (used by dual-arm wrapper)."""
+        if self._is_fake:
+            return
+        with self._lock:
+            for dxl_id in ids:
+                for addr, val in [(ADDR_POSITION_P_GAIN, p), (ADDR_POSITION_I_GAIN, i), (ADDR_POSITION_D_GAIN, d)]:
+                    dxl_comm_result, dxl_error = self._packetHandler.write2ByteTxRx(
+                        self._portHandler, dxl_id, addr, val
+                    )
+                    if dxl_comm_result != COMM_SUCCESS or dxl_error != 0:
+                        raise RuntimeError(
+                            f"Failed to set PID gain (addr={addr}, val={val}) for Dynamixel ID {dxl_id}"
+                        )
 
     def verify_operating_mode(self, expected_mode: int):
         if self._is_fake:
