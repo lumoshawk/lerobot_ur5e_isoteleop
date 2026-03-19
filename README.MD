@@ -1,6 +1,6 @@
-# UR5e Master-Slave Teleoperation Data Collection
+# UR5e Master-Slave Dual Arm Teleoperation Data Collection
 <p align="center">
-  <img src="assets/robot.png" alt="Record" width="600">
+  <img src="assets/dual_arm.png" alt="Record" width="600">
   <br>
 </p>
 
@@ -23,12 +23,17 @@ pip install -e .
 ### 1.3 Clone and Install UR5e Teleoperation Control Source
 ```bash
 mkdir ur_data_collection && cd ur_data_collection
-git clone https://github.com/scy-v/lerobot_ur5e_isoteleop.git
+git clone https://github.com/lumoshawk/lerobot_ur5e_isoteleop.git
 cd lerobot_ur5e_isoteleop
 pip install -r requirements.txt # install all packages in editable mode
 ```
 
-### 1.4 View Available Commands
+### 1.4 Switch to ```dual_arm``` branch
+```bash
+git checkout dual_arm
+```
+
+### 1.5 View Available Commands
 Run the following command to display all available scrtips:
 ```bash
 ur5e-help
