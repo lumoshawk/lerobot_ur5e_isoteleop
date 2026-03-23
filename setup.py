@@ -25,8 +25,10 @@ setup(
             "utils-joint-offsets = scripts.utils.teleop_joint_offsets:main",
 
             # tools commands (helper tools)
-            "tools-check-dataset = scripts.tools.check_dataset_info:main",
+            "tools-check-info = scripts.tools.check_dataset_info:main",
             "tools-check-rs = scripts.tools.rs_devices:main",
+            "tools-check-dataset = scripts.tools.check_dataset:main",
+            "tools-prune-dataset = scripts.tools.prune_episodes:main",
 
             # test commands (testing scripts)
             "test-gripper-ctrl = scripts.test.gripper_ctrl:main",

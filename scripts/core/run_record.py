@@ -31,6 +31,9 @@ class RecordConfig:
         cam = cfg["cameras"]
         robot = cfg["robot"]
         teleop = cfg["teleop"]
+        dxl_cfg = teleop["dynamixel_config"]
+        force_cfg = robot["force_mode"]
+        joint_cfg = robot["joint_mode"]
 
         # global config
         self.repo_id: str = cfg["repo_id"]
@@ -38,6 +41,25 @@ class RecordConfig:
         self.fps: str = cfg.get("fps", 15)
         self.dataset_path: str = HF_LEROBOT_HOME / self.repo_id
         self.user_info: str = cfg.get("user_notes", None)
+
+        # teleop config
+        self.port = dxl_cfg["port"]
+        self.use_gripper = dxl_cfg["use_gripper"]  
+        self.joint_ids = dxl_cfg["joint_ids"]
+        self.joint_offsets = dxl_cfg["joint_offsets"]
+        self.joint_signs = dxl_cfg["joint_signs"]
+        self.gripper_config = dxl_cfg["gripper_config"]
+        self.hardware_offsets = dxl_cfg["hardware_offsets"]
+        self.control_mode = teleop.get("control_mode", "isoteleop")
+        
+        # robot config
+        self.robot_ip: str = robot["ip"]
+        self.gripper_port: str = robot["gripper_port"]
+        self.use_gripper: str = robot["use_gripper"]
+        self.close_threshold = robot["close_threshold"]
+        self.gripper_reverse: str = robot["gripper_reverse"]
+        self.gripper_bin_threshold: float = robot["gripper_bin_threshold"]
+
 
         # Check if dual-arm mode is enabled from config
         self.is_dual_arm = cfg.get("dual_arm_mode", False)
@@ -78,6 +100,21 @@ class RecordConfig:
             self.close_threshold = robot["close_threshold"]
             self.gripper_reverse: str = robot["gripper_reverse"]
             self.gripper_bin_threshold: float = robot["gripper_bin_threshold"]
+            self.control_space: str = robot["control_space"]
+            self.robot_urdf_path: str = robot["robot_urdf_path"]
+            self.kp: int = force_cfg["kp"]
+            self.kd: int = force_cfg["kd"]
+            self.kp_rot: int = force_cfg["kp_rot"]
+            self.kd_rot: int = force_cfg["kd_rot"]
+            self.rtde_freq: int = force_cfg["rtde_freq"]
+            self.select_vector: list= force_cfg["select_vector"]
+            self.force_limit: list= force_cfg["force_limit"]
+            self.pos_delta: int = force_cfg["pos_delta"]
+            self.vel_delta: int = force_cfg["vel_delta"]
+            self.gain_scale: int = force_cfg["gain_scale"]
+            self.look_ahead_time: int = joint_cfg["look_ahead_time"]
+            self.dt: int = joint_cfg["dt"]
+            self.gain: int = joint_cfg["gain"]
 
             # Single-arm cameras config
             self.wrist_cam_serial: str = cam["wrist_cam_serial"]
@@ -100,7 +137,6 @@ class RecordConfig:
 
         # storage config
         self.push_to_hub: bool = storage.get("push_to_hub", False)
-
 
 def check_joint_offsets(record_cfg: RecordConfig, arm_name: str = None):
     """Check the joint_offsets is set and correct."""
@@ -344,7 +380,23 @@ def run_record(record_cfg: RecordConfig):
                 use_gripper=record_cfg.robot_left["use_gripper"],
                 gripper_reverse=record_cfg.robot_left["gripper_reverse"],
                 gripper_bin_threshold=record_cfg.robot_left["gripper_bin_threshold"],
-                start_position=record_cfg.robot_left.get("start_position", [0, -30, 60, -100, 130, 0]))
+                start_position=record_cfg.robot_left.get("start_position", [0, -30, 60, -100, 130, 0]),
+                control_space=record_cfg.robot_left["control_space"],
+                robot_urdf_path=record_cfg.robot_left["robot_urdf_path"],
+                kp=record_cfg.robot_left["kp"],
+                kd=record_cfg.robot_left["kd"],
+                kp_rot=record_cfg.robot_left["kp_rot"],
+                kd_rot=record_cfg.robot_left["kd_rot"],
+                rtde_freq=record_cfg.robot_left["rtde_freq"],
+                select_vector=record_cfg.robot_left["select_vector"],
+                force_limit=record_cfg.robot_left["force_limit"],
+                look_ahead_time=record_cfg.robot_left["look_ahead_time"],
+                dt=record_cfg.robot_left["dt"],
+                gain=record_cfg.robot_left["gain"],
+                pos_delta=record_cfg.robot_left["pos_delta"],
+                vel_delta=record_cfg.robot_left["vel_delta"],
+                gain_scale=record_cfg.robot_left["gain_scale"],
+            )
 
             right_robot_config = UR5eConfig(
                 robot_ip=record_cfg.robot_right["ip"],
@@ -355,7 +407,23 @@ def run_record(record_cfg: RecordConfig):
                 use_gripper=record_cfg.robot_right["use_gripper"],
                 gripper_reverse=record_cfg.robot_right["gripper_reverse"],
                 gripper_bin_threshold=record_cfg.robot_right["gripper_bin_threshold"],
-                start_position=record_cfg.robot_right.get("start_position", [0, -30, 60, -100, 130, 0]))
+                start_position=record_cfg.robot_right.get("start_position", [0, -30, 60, -100, 130, 0]),
+                control_space=record_cfg.robot_right["control_space"],
+                robot_urdf_path=record_cfg.robot_right["robot_urdf_path"],
+                kp=record_cfg.robot_right["kp"],
+                kd=record_cfg.robot_right["kd"],
+                kp_rot=record_cfg.robot_right["kp_rot"],
+                kd_rot=record_cfg.robot_right["kd_rot"],
+                rtde_freq=record_cfg.robot_right["rtde_freq"],
+                select_vector=record_cfg.robot_right["select_vector"],
+                force_limit=record_cfg.robot_right["force_limit"],
+                look_ahead_time=record_cfg.robot_right["look_ahead_time"],
+                dt=record_cfg.robot_right["dt"],
+                gain=record_cfg.robot_right["gain"],
+                pos_delta=record_cfg.robot_right["pos_delta"],
+                vel_delta=record_cfg.robot_right["vel_delta"],
+                gain_scale=record_cfg.robot_right["gain_scale"],
+            )
 
             # Initialize dual-arm robot and teleoperator
             robot = DualUR5e(left_robot_config, right_robot_config)
@@ -401,7 +469,23 @@ def run_record(record_cfg: RecordConfig):
                 use_gripper=record_cfg.use_gripper,
                 gripper_reverse=record_cfg.gripper_reverse,
                 gripper_bin_threshold=record_cfg.gripper_bin_threshold,
-                start_position=record_cfg.start_position)
+                start_position=record_cfg.start_position,
+                control_space=record_cfg.control_space,
+                robot_urdf_path=record_cfg.robot_urdf_path,
+                kp=record_cfg.kp,
+                kd=record_cfg.kd,
+                kp_rot=record_cfg.kp_rot,
+                kd_rot=record_cfg.kd_rot,
+                rtde_freq=record_cfg.rtde_freq,
+                select_vector=record_cfg.select_vector,
+                force_limit=record_cfg.force_limit,
+                look_ahead_time=record_cfg.look_ahead_time,
+                dt=record_cfg.dt,
+                gain=record_cfg.gain,
+                pos_delta=record_cfg.pos_delta,
+                vel_delta=record_cfg.vel_delta,
+                gain_scale=record_cfg.gain_scale
+            )
 
             robot = UR5e(robot_config)
             teleop = UR5eTeleop(teleop_config)
@@ -510,6 +594,7 @@ def run_record(record_cfg: RecordConfig):
                 dataset.clear_episode_buffer()
                 continue
 
+            robot.stop_force()
             dataset.save_episode()
 
             # Reset the environment if not stopping or re-recording
@@ -553,18 +638,12 @@ def run_record(record_cfg: RecordConfig):
         if record_cfg.push_to_hub:
             dataset.push_to_hub()
 
-    except Exception as e:
-        logging.info(f"====== [ERROR] {e} ======")
+    except (Exception, KeyboardInterrupt) as e:
+        logging.info(f"====== [ERROR] {e} ======" if isinstance(e, Exception) else "\n====== [INFO] Ctrl+C detected ======")
+        robot.disconnect()
+        teleop.disconnect()
         dataset_path = Path(HF_LEROBOT_HOME) / dataset_name
         handle_incomplete_dataset(dataset_path)
-        sys.exit(1)
-
-    except KeyboardInterrupt:
-        logging.info("\n====== [INFO] Ctrl+C detected, cleaning up incomplete dataset... ======")
-        dataset_path = Path(HF_LEROBOT_HOME) / dataset_name
-        handle_incomplete_dataset(dataset_path)
-        sys.exit(1)
-
 
 def main():
     parent_path = Path(__file__).resolve().parent

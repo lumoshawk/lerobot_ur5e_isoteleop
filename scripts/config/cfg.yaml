@@ -110,6 +110,23 @@ record:
       gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
       gripper_port: &gripper_port_left "/dev/ur5e_left_gripper" # gripper_port
       gripper_reverse: &gripper_reverse_left False  # If gripper moves opposite, flip this value
+      control_space: "force" # "force" or "joint"
+      robot_urdf_path: assets/urdf/ur5e.urdf
+      force_mode:
+        kp: 2000
+        kd: 200
+        kp_rot: 4000
+        kd_rot: 800
+        rtde_freq: 125
+        select_vector: [1, 1, 1, 1, 1, 1]
+        force_limit: [2,2,2,2,2,2]
+        pos_delta: 0.2
+        vel_delta: 0.2
+        gain_scale: 1.5
+      joint_mode:
+        look_ahead_time: 0.2
+        dt: 0.002
+        gain: 100
 
     right_arm:
       ip: &ip_right "192.168.131.11" # robot_ip for right arm
@@ -119,6 +136,23 @@ record:
       gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
       gripper_port: &gripper_port_right "/dev/ur5e_right_gripper" # gripper_port
       gripper_reverse: &gripper_reverse_right False  # If gripper moves opposite, flip this value
+      control_space: "force" # "force" or "joint"
+      robot_urdf_path: assets/urdf/ur5e.urdf
+      force_mode:
+        kp: 2000
+        kd: 200
+        kp_rot: 4000
+        kd_rot: 800
+        rtde_freq: 125
+        select_vector: [1, 1, 1, 1, 1, 1]
+        force_limit: [2,2,2,2,2,2]
+        pos_delta: 0.2
+        vel_delta: 0.2
+        gain_scale: 1.5
+      joint_mode:
+        look_ahead_time: 0.2
+        dt: 0.002
+        gain: 100
 
   cameras:
     left_wrist_cam_serial: "347622073802" # left arm wrist camera serial number
@@ -135,7 +169,7 @@ record:
     description: "move from one point to another" # task description
     num_episodes: 5 # number of episodes to record
     display: True # Whether to display the data during recording
-    resume: False
+    resume: True
     resume_dataset: yuanlearning/open_cabinet_place_reagent_bottle_inside_close_cabinet_20251119_v01 # dataset to resume from if resume is True
 
   time:
@@ -145,7 +179,6 @@ record:
 
   storage:
     push_to_hub: False # whether to push the dataset to your huggingface repo after recording
-
 
 replay:
   dataset_name: scylearning/pick_greencube_into_trashbin_20251102_v01
@@ -170,5 +203,12 @@ replay:
 
 
 visualize:
-  dataset_name: scylearning/pour_water_into_beaker_20251117_v01
-  episode_index: 52 # episode index to visualize
+  dataset_name: scylearning/move_reagent_bottle_20260317_v01
+  episode_index: 100 # episode index to visualize
+
+check_dataset:
+  dataset_name: scylearning/move_reagent_bottle_20260317_v01
+
+prune_episodes:
+  old_dataset_name: scylearning/move_reagent_bottle_20260317_v01
+  new_dataset_name: scylearning/move_reagent_bottle_20260317_v01_pruned
