@@ -3,9 +3,13 @@ Dual arm robot class that manages both arms using a single shared Dynamixel driv
 This avoids port conflicts when both arms use the same serial port.
 """
 
+import math
+import logging
 from typing import Dict, Optional, Sequence
 import numpy as np
 from .driver import DynamixelDriver, FakeDynamixelDriver
+
+logger = logging.getLogger(__name__)
 
 
 class DualArmDynamixelRobot:
@@ -57,6 +61,11 @@ class DualArmDynamixelRobot:
 
         self._torque_on = False
 
+        # Start virtual trigger for each arm that has trigger_rest_rad in gripper_config
+        self._triggers = []
+        for arm_cfg in (left_arm_config, right_arm_config):
+            self._start_trigger_from_gripper_config(arm_cfg)
+
         # Create wrapper objects for each arm
         self._left_wrapper = ArmWrapper(
             self._driver,
@@ -87,6 +96,37 @@ class DualArmDynamixelRobot:
         self._torque_on = mode
         self._left_wrapper._torque_on = mode
         self._right_wrapper._torque_on = mode
+
+    def _start_trigger_from_gripper_config(self, arm_config):
+        """Start a trigger thread if gripper_config has a 4th element (trigger_rest_rad).
+        Format: [id, min, max, trigger_rest_rad, trigger_sign, trigger_hz]
+        """
+        gripper_cfg = arm_config.get('gripper_config')
+        if not gripper_cfg or len(gripper_cfg) < 4:
+            return
+        servo_id = int(gripper_cfg[0])
+        rest_deg = math.degrees(gripper_cfg[3])
+        sign = int(gripper_cfg[4]) if len(gripper_cfg) >= 5 else 1
+        loop_hz = int(gripper_cfg[5]) if len(gripper_cfg) >= 6 else 10
+        try:
+            from .virtual_trigger import TriggerThread
+            trigger = TriggerThread(
+                driver=self._driver,
+                servo_id=servo_id,
+                rest_deg=rest_deg,
+                sign=sign,
+                loop_hz=loop_hz,
+            )
+            trigger.start()
+            self._triggers.append(trigger)
+        except Exception as e:
+            logger.warning(f"[TRIGGER] Failed to start trigger on servo {servo_id}: {e}")
+
+    def stop_trigger(self):
+        """Stop all trigger threads."""
+        for trigger in self._triggers:
+            trigger.stop()
+        self._triggers.clear()
 
 
 class ArmWrapper:

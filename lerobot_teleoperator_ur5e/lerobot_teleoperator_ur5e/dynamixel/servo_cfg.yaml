@@ -1,0 +1,28 @@
+port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0
+baudrate: 57600
+run_trigger: true
+run_grab_t0: true
+trigger_id: 13
+trigger_rest_deg: 220.0
+trigger_hz: 10
+grab_t0_hz: 60
+left_arm:
+  hardware_offsets: [-177.7734375, -295.3125, -187.03125, -271.171875, -93.8671875,
+    -84.90234375]
+  use_gripper: true
+  joint_ids: [7, 8, 9, 10, 11, 12]
+  joint_offsets: [3.142, -3.142, 0.0, -3.142, -3.142, 4.712]
+  joint_signs: [1, -1, 1, -1, 1, 1]
+  gripper_config: [14, 2.5157, 3.479]
+right_arm:
+  hardware_offsets: [-268.681640625, -360.087890625, -301.376953125, -269.82421875,
+    -87.626953125, 2.87109375]
+  use_gripper: true
+  joint_ids: [1, 2, 3, 4, 5, 6]
+  joint_offsets: [-3.142, -3.142, -6.283, -3.142, -3.142, 4.712]
+  joint_signs: [1, -1, 1, -1, 1, 1]
+  gripper_config: [13, 2.5157, 3.479]
+  joint_pid:
+    p: [810, 710, 550, 300, 140, 10]
+    d: [30, 30, 30, 30, 30, 10]
+    pwm: [700, 700, 885, 885, 885, 100]

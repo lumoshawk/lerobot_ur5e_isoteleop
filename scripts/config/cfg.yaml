@@ -1,76 +1,7 @@
 # ========== SINGLE ARM CONFIGURATION ==========
 # Uncomment below for single-arm mode (set dual_arm_mode to false)
-record:
-  repo_id: &repo_id "yuanlearning/test"
-  # repo_id: &repo_id "scylearning/pick_greencube_into_trashbin"
-  # Suggested format: <hf_username>/<description>, description = task.description -> Verb_SourceObject_prep_TargetObject
-  # e.g. Pick up the green cube and put it into the trash bin -> pick_greencube_into_trashbin
-  debug: &debug False # if True, robot will not execute any actions, but gripper can still be controlled
-  user_notes:  # any additional notes about the dataset
-  fps: 15 # dataset and camera frame rate
-
-  # Set to true to enable dual-arm mode, false for single-arm mode
-  dual_arm_mode: &dual_arm_mode False
-  teleop:
-    control_mode: "isoteleop"
-    dynamixel_config:
-      port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
-      hardware_offsets: [-268.681640625, -360.087890625, -301.376953125, -269.82421875, -87.626953125, 2.87109375] # The Calibration offsets between the master and the slave robot
-      use_gripper: &use_gripper True # whether the slave robot can use gripper
-      joint_ids: [1,2,3,4,5,6]
-      joint_offsets: [0.0, -3.142, -6.283, -6.283, -3.142, 0.0]
-      joint_signs: [1, -1, 1, -1, 1, 1]
-      gripper_config: [ 13, 2.5157, 3.4790 ] # id, min, max
-
-  robot:
-    ip: &ip "192.168.131.11" # robot_ip
-    start_position: [ 17, -95, 117, -147, 146, 22 ] # degrees
-    use_gripper: *use_gripper
-    close_threshold: 0.9 # threshold to determine gripper open/close
-    gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
-    gripper_port: &gripper_port "/dev/ur5e_right_gripper" # gripper_port
-    gripper_reverse: &gripper_reverse False  # If gripper moves opposite, flip this value
-
-  cameras:
-    wrist_cam_serial: "347622073802" # wrist camera serial number
-    exterior_cam_serial: "348122071700" # exterior camera serial number
-  # Common camera settings for both modes
-    width: 424 # 640 424
-    height: 240 # 360 240
-
-  task:
-    # description: "Pick up the green cube and put it into the trash bin." # task description
-    description: "move from one point to another" # task description
-    num_episodes: 5 # number of episodes to record
-    display: True # Whether to display the data during recording
-    resume: False
-    resume_dataset: yuanlearning/open_cabinet_place_reagent_bottle_inside_close_cabinet_20251119_v01 # dataset to resume from if resume is True
-
-  time:
-    episode_time_sec: 6000 # max time per episode in seconds
-    reset_time_sec: 6000 # max time to reset between episodes in seconds
-    save_meta_period: 1 # Save metadata after every N episodes
-
-  storage:
-    push_to_hub: False # whether to push the dataset to your huggingface repo after recording
-
-
-replay:
-  dataset_name: username/task_description_20250101_v01
-  episode_idx: 0 # episode index to replay
-  debug: *debug
-  robot:
-    ip: *ip
-    gripper_port: *gripper_port
-    use_gripper: *use_gripper
-    gripper_reverse: *gripper_reverse
-
-# ========== SINGLE ARM CONFIGURATION END==========
-
-# ========== DUAL ARM CONFIGURATION ==========
-# Used when dual_arm_mode is true
 #record:
-#  repo_id: &repo_id "yuanlearning/repeat_traj"
+#  repo_id: &repo_id "yuanlearning/test"
 #  # repo_id: &repo_id "scylearning/pick_greencube_into_trashbin"
 #  # Suggested format: <hf_username>/<description>, description = task.description -> Verb_SourceObject_prep_TargetObject
 #  # e.g. Pick up the green cube and put it into the trash bin -> pick_greencube_into_trashbin
@@ -79,54 +10,31 @@ replay:
 #  fps: 15 # dataset and camera frame rate
 #
 #  # Set to true to enable dual-arm mode, false for single-arm mode
-#  dual_arm_mode: &dual_arm_mode True
-#
+#  dual_arm_mode: &dual_arm_mode False
 #  teleop:
 #    control_mode: "isoteleop"
-#    port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" # Shared port for all Dynamixel servos
-#
-#    left_arm:
-#      hardware_offsets: [-177.7734375, -295.3125, -187.03125, -271.171875, -93.8671875, -84.90234375] # The Calibration offsets between the master and the slave robot
-#      use_gripper: &use_gripper_left True # whether the slave robot can use gripper
-#      joint_ids: [7,8,9,10,11,12]
-#      joint_offsets: [3.142, -3.142, 0.0, -3.142, -3.142, -1.571]
-#      joint_signs: [1, -1, 1, -1, 1, 1]
-#      gripper_config: [14,  2.5157,3.4790] # id, min, max
-#
-#    right_arm:
+#    dynamixel_config:
+#      port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0"
 #      hardware_offsets: [-268.681640625, -360.087890625, -301.376953125, -269.82421875, -87.626953125, 2.87109375] # The Calibration offsets between the master and the slave robot
-#      use_gripper: &use_gripper_right True # whether the slave robot can use gripper
+#      use_gripper: &use_gripper True # whether the slave robot can use gripper
 #      joint_ids: [1,2,3,4,5,6]
-#      joint_offsets: [-3.142, -3.142, 0.0, -3.142, -3.142, 0.0]
-#      joint_signs: [ 1, -1, 1, -1, 1, 1 ]
-#      gripper_config: [13, 2.5157, 3.4790] # id, min, max
+#      joint_offsets: [0.0, -3.142, -6.283, -6.283, -3.142, 4.712]
+#      joint_signs: [1, -1, 1, -1, 1, 1]
+#      gripper_config: [ 13, 4.41568301, 2.8099801, 3.8397, 1, 10 ] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
 #
 #  robot:
-#    left_arm:
-#      ip: &ip_left "192.168.131.12" # robot_ip for left arm
-#      start_position: [ -15,-92,-125,-33,213,-22 ]  # degrees
-#      use_gripper: *use_gripper_left
-#      close_threshold: 0.7 # threshold to determine gripper open/close
-#      gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
-#      gripper_port: &gripper_port_left "/dev/ur5e_left_gripper" # gripper_port
-#      gripper_reverse: &gripper_reverse_left False  # If gripper moves opposite, flip this value
-#
-#    right_arm:
-#      ip: &ip_right "192.168.131.11" # robot_ip for right arm
-#      start_position: [ 17, -95, 117, -147, 146, 22 ]  # degrees
-#      use_gripper: *use_gripper_right
-#      close_threshold: 0.7 # threshold to determine gripper open/close
-#      gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
-#      gripper_port: &gripper_port_right "/dev/ur5e_right_gripper" # gripper_port
-#      gripper_reverse: &gripper_reverse_right True  # If gripper moves opposite, flip this value
+#    ip: &ip "192.168.131.11" # robot_ip
+#    start_position: [ 17, -95, 117, -147, 146, 22 ] # degrees
+#    use_gripper: *use_gripper
+#    close_threshold: 0.3 # threshold to determine gripper open/close
+#    gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
+#    gripper_port: &gripper_port "/dev/ur5e_right_gripper" # gripper_port
+#    gripper_reverse: &gripper_reverse False  # If gripper moves opposite, flip this value
 #
 #  cameras:
-#    left_wrist_cam_serial: "347622073802" # left arm wrist camera serial number
-#    left_exterior_cam_serial: "213522070689" # left arm exterior camera serial number
-#    right_wrist_cam_serial: "348122071700" # right arm wrist camera serial number - UPDATE THIS
-#    right_exterior_cam_serial: "YYYYYY" # right arm exterior camera serial number - UPDATE THIS
-#
-#    # Common camera settings for both modes
+#    wrist_cam_serial: "347622073802" # wrist camera serial number
+#    exterior_cam_serial: "348122071700" # exterior camera serial number
+#  # Common camera settings for both modes
 #    width: 424 # 640 424
 #    height: 240 # 360 240
 #
@@ -148,20 +56,112 @@ replay:
 #
 #
 #replay:
-#  dataset_name: scylearning/pick_greencube_into_trashbin_20251102_v01
+#  dataset_name: username/task_description_20250101_v01
 #  episode_idx: 0 # episode index to replay
 #  debug: *debug
 #  robot:
-#    left_arm:
-#      ip: *ip_left
-#      gripper_port: *gripper_port_left
-#      use_gripper: *use_gripper_left
-#      gripper_reverse: *gripper_reverse_left
-#    right_arm:
-#      ip: *ip_right
-#      gripper_port: *gripper_port_right
-#      use_gripper: *use_gripper_right
-#      gripper_reverse: *gripper_reverse_right
+#    ip: *ip
+#    gripper_port: *gripper_port
+#    use_gripper: *use_gripper
+#    gripper_reverse: *gripper_reverse
+
+# ========== SINGLE ARM CONFIGURATION END==========
+
+# ========== DUAL ARM CONFIGURATION ==========
+# Used when dual_arm_mode is true
+record:
+  repo_id: &repo_id "yuanlearning/repeat_traj"
+  # repo_id: &repo_id "scylearning/pick_greencube_into_trashbin"
+  # Suggested format: <hf_username>/<description>, description = task.description -> Verb_SourceObject_prep_TargetObject
+  # e.g. Pick up the green cube and put it into the trash bin -> pick_greencube_into_trashbin
+  debug: &debug False # if True, robot will not execute any actions, but gripper can still be controlled
+  user_notes:  # any additional notes about the dataset
+  fps: 15 # dataset and camera frame rate
+
+  # Set to true to enable dual-arm mode, false for single-arm mode
+  dual_arm_mode: &dual_arm_mode True
+
+  teleop:
+    control_mode: "isoteleop"
+    port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" # Shared port for all Dynamixel servos
+
+    left_arm:
+      hardware_offsets: [-177.7734375, -295.3125, -187.03125, -271.171875, -93.8671875, -84.90234375] # The Calibration offsets between the master and the slave robot
+      use_gripper: &use_gripper_left True # whether the slave robot can use gripper
+      joint_ids: [7,8,9,10,11,12]
+      joint_offsets: [3.142, -3.142, 0.0, -3.142, -3.142, -1.571]
+      joint_signs: [1, -1, 1, -1, 1, 1]
+      gripper_config: [14,1.85004901, 3.43829863, 2.53072742, -1, 10] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
+
+    right_arm:
+      hardware_offsets: [-268.681640625, -360.087890625, -301.376953125, -269.82421875, -87.626953125, 2.87109375] # The Calibration offsets between the master and the slave robot
+      use_gripper: &use_gripper_right True # whether the slave robot can use gripper
+      joint_ids: [1,2,3,4,5,6]
+      joint_offsets: [0.0, -3.142, -6.283, -6.283, -3.142, 6.283]
+      joint_signs: [ 1, -1, 1, -1, 1, 1 ]
+      gripper_config: [13, 4.41568301, 2.8099801, 3.8397, 1, 10] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
+
+  robot:
+    left_arm:
+      ip: &ip_left "192.168.131.12" # robot_ip for left arm
+      start_position: [ -15,-92,-125,-33,213,-22 ]  # degrees
+      use_gripper: *use_gripper_left
+      close_threshold: 0.3 # threshold to determine gripper open/close
+      gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
+      gripper_port: &gripper_port_left "/dev/ur5e_left_gripper" # gripper_port
+      gripper_reverse: &gripper_reverse_left False  # If gripper moves opposite, flip this value
+
+    right_arm:
+      ip: &ip_right "192.168.131.11" # robot_ip for right arm
+      start_position: [ 17, -95, 117, -147, 146, 22 ]  # degrees
+      use_gripper: *use_gripper_right
+      close_threshold: 0.3 # threshold to determine gripper open/close
+      gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
+      gripper_port: &gripper_port_right "/dev/ur5e_right_gripper" # gripper_port
+      gripper_reverse: &gripper_reverse_right False  # If gripper moves opposite, flip this value
+
+  cameras:
+    left_wrist_cam_serial: "347622073802" # left arm wrist camera serial number
+    left_exterior_cam_serial: "213522070689" # left arm exterior camera serial number
+    right_wrist_cam_serial: "348122071700" # right arm wrist camera serial number - UPDATE THIS
+    right_exterior_cam_serial: "YYYYYY" # right arm exterior camera serial number - UPDATE THIS
+
+    # Common camera settings for both modes
+    width: 424 # 640 424
+    height: 240 # 360 240
+
+  task:
+    # description: "Pick up the green cube and put it into the trash bin." # task description
+    description: "move from one point to another" # task description
+    num_episodes: 5 # number of episodes to record
+    display: True # Whether to display the data during recording
+    resume: False
+    resume_dataset: yuanlearning/open_cabinet_place_reagent_bottle_inside_close_cabinet_20251119_v01 # dataset to resume from if resume is True
+
+  time:
+    episode_time_sec: 6000 # max time per episode in seconds
+    reset_time_sec: 6000 # max time to reset between episodes in seconds
+    save_meta_period: 1 # Save metadata after every N episodes
+
+  storage:
+    push_to_hub: False # whether to push the dataset to your huggingface repo after recording
+
+
+replay:
+  dataset_name: scylearning/pick_greencube_into_trashbin_20251102_v01
+  episode_idx: 0 # episode index to replay
+  debug: *debug
+  robot:
+    left_arm:
+      ip: *ip_left
+      gripper_port: *gripper_port_left
+      use_gripper: *use_gripper_left
+      gripper_reverse: *gripper_reverse_left
+    right_arm:
+      ip: *ip_right
+      gripper_port: *gripper_port_right
+      use_gripper: *use_gripper_right
+      gripper_reverse: *gripper_reverse_right
 
 # ========== DUAL ARM CONFIGURATION END==========
 

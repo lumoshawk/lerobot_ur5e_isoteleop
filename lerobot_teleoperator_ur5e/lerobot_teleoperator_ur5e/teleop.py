@@ -85,7 +85,7 @@ class UR5eTeleop(Teleoperator):
                     'gripper_config': self.cfg.right_arm['gripper_config'],
                 },
                 port=self.cfg.port,
-                real=True
+                real=True,
             )
 
             # Get wrapper objects for backward compatibility
@@ -109,7 +109,7 @@ class UR5eTeleop(Teleoperator):
                     port=self.cfg.port,
                     use_gripper=self.cfg.use_gripper,
                     gripper_config=self.cfg.gripper_config,
-                    real=True
+                    real=True,
                     )
             joint_positions = self.dynamixel_robot.get_joint_state()
             logger.info(f"[TELEOP] Current joint positions: {joint_positions.tolist()}")
@@ -147,9 +147,12 @@ class UR5eTeleop(Teleoperator):
             return
 
         if self.is_dual_arm:
+            # Stop trigger thread before closing driver
+            self.dual_arm_robot.stop_trigger()
             # Close the shared driver only once
             self.dual_arm_robot._driver.close()
         else:
+            self.dynamixel_robot.stop_trigger()
             self.dynamixel_robot._driver.close()
 
         logger.info(f"[INFO] ===== All {self.name} connections have been closed =====")

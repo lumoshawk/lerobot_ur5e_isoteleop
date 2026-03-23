@@ -1,7 +1,11 @@
 from typing import Dict, Optional, Sequence, Tuple
+import logging
+import math
 
 import numpy as np
 from .robot import Robot
+
+logger = logging.getLogger(__name__)
 
 
 class DynamixelRobot(Robot):
@@ -67,6 +71,14 @@ class DynamixelRobot(Robot):
         self._last_pos = None
         self._alpha = 1.0
         self.record_time = 0
+
+        # Start virtual trigger if gripper_config has trigger_rest_rad (4th element)
+        # Format: [id, min, max, trigger_rest_rad, trigger_sign, trigger_hz]
+        self._trigger = None
+        if use_gripper and gripper_config is not None and len(gripper_config) >= 4:
+            sign = int(gripper_config[4]) if len(gripper_config) >= 5 else 1
+            loop_hz = int(gripper_config[5]) if len(gripper_config) >= 6 else 10
+            self._start_trigger(int(gripper_config[0]), math.degrees(gripper_config[3]), sign, loop_hz)
         
     def num_dofs(self) -> int:
         return len(self._joint_ids)
@@ -111,6 +123,27 @@ class DynamixelRobot(Robot):
 
         return {
             **obs_dict,
-            "gripper_position": joint_state[-1],  
+            "gripper_position": joint_state[-1],
         }
+
+    def _start_trigger(self, servo_id, rest_deg, sign=1, loop_hz=10):
+        """Start the trigger thread for the given servo."""
+        try:
+            from .virtual_trigger import TriggerThread
+            self._trigger = TriggerThread(
+                driver=self._driver,
+                servo_id=servo_id,
+                rest_deg=rest_deg,
+                sign=sign,
+                loop_hz=loop_hz,
+            )
+            self._trigger.start()
+        except Exception as e:
+            logger.warning(f"[TRIGGER] Failed to start trigger on servo {servo_id}: {e}")
+
+    def stop_trigger(self):
+        """Stop the trigger thread if running."""
+        if self._trigger is not None:
+            self._trigger.stop()
+            self._trigger = None
 
