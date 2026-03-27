@@ -86,25 +86,25 @@ record:
     port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" # Shared port for all Dynamixel servos
 
     left_arm:
-      hardware_offsets: [-177.7734375, -295.3125, -187.03125, -271.171875, -93.8671875, -84.90234375] # The Calibration offsets between the master and the slave robot
+      hardware_offsets: [-359.501953125, -299.091796875, -180.87890625, -268.271484375, -89.296875, -357.509765625] # The Calibration offsets between the master and the slave robot
       use_gripper: &use_gripper_left True # whether the slave robot can use gripper
       joint_ids: [7,8,9,10,11,12]
-      joint_offsets: [3.142, -3.142, 0.0, -3.142, -3.142, -1.571]
+      joint_offsets: [0.0, -3.142, 0.0, -3.142, -3.142, 0.0]
       joint_signs: [1, -1, 1, -1, 1, 1]
       gripper_config: [14,1.85004901, 3.43829863, 2.53072742, -1, 10] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
 
     right_arm:
-      hardware_offsets: [-268.681640625, -360.087890625, -301.376953125, -269.82421875, -87.626953125, 2.87109375] # The Calibration offsets between the master and the slave robot
+      hardware_offsets: [-447.216796875, -363.1640625, 57.7734375, -84.90234375, -90.41015625, -361.46484375] # The Calibration offsets between the master and the slave robot
       use_gripper: &use_gripper_right True # whether the slave robot can use gripper
       joint_ids: [1,2,3,4,5,6]
-      joint_offsets: [0.0, -3.142, -6.283, -6.283, -3.142, 6.283]
-      joint_signs: [ 1, -1, 1, -1, 1, 1 ]
+      joint_offsets: [-6.283, 0.0, 0.0, 0.0, 0.0, 1.571]
+      joint_signs: [ 1, 1, -1, 1, 1, 1 ]
       gripper_config: [13, 4.41568301, 2.8099801, 3.8397, 1, 10] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
 
   robot:
     left_arm:
       ip: &ip_left "192.168.131.12" # robot_ip for left arm
-      start_position: [ -15,-92,-125,-33,213,-22 ]  # degrees
+      start_position: [-25.166, -94.681, -124.189, -18.627, 221.946, -41.906] # degrees
       use_gripper: *use_gripper_left
       close_threshold: 0.3 # threshold to determine gripper open/close
       gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
@@ -119,7 +119,7 @@ record:
         kd_rot: 800
         rtde_freq: 125
         select_vector: [1, 1, 1, 1, 1, 1]
-        force_limit: [2,2,2,2,2,2]
+        force_limit: [5, 5, 5, 5, 5, 5]
         pos_delta: 0.2
         vel_delta: 0.2
         gain_scale: 1.5
@@ -130,13 +130,13 @@ record:
 
     right_arm:
       ip: &ip_right "192.168.131.11" # robot_ip for right arm
-      start_position: [ 17, -95, 117, -147, 146, 22 ]  # degrees
+      start_position: [211.423, -101.338, -118.770, -3.610, -48.221, -92.948] # degrees
       use_gripper: *use_gripper_right
       close_threshold: 0.3 # threshold to determine gripper open/close
       gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
       gripper_port: &gripper_port_right "/dev/ur5e_right_gripper" # gripper_port
       gripper_reverse: &gripper_reverse_right False  # If gripper moves opposite, flip this value
-      control_space: "force" # "force" or "joint"
+      control_space: "joint" # "force" or "joint"
       robot_urdf_path: assets/urdf/ur5e.urdf
       force_mode:
         kp: 2000
@@ -150,7 +150,7 @@ record:
         vel_delta: 0.2
         gain_scale: 1.5
       joint_mode:
-        look_ahead_time: 0.2
+        look_ahead_time: 0.1
         dt: 0.002
         gain: 100
 
@@ -169,7 +169,7 @@ record:
     description: "move from one point to another" # task description
     num_episodes: 5 # number of episodes to record
     display: True # Whether to display the data during recording
-    resume: True
+    resume: False
     resume_dataset: yuanlearning/open_cabinet_place_reagent_bottle_inside_close_cabinet_20251119_v01 # dataset to resume from if resume is True
 
   time:

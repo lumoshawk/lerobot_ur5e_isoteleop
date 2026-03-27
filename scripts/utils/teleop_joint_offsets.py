@@ -200,49 +200,103 @@ def calibrate_hardware_offsets(driver: DynamixelDriver, rtde_r:RTDEReceiveInterf
 
     logger.info("\n⚠ IMPORTANT INSTRUCTIONS:")
     logger.info("1. Move the UR5e robot to the calibration position shown above")
-    logger.info("2. Manually position the master arm to match EXACTLY the same position")
-    logger.info("3. Ensure both arms are in the exact same pose")
-    logger.info("4. The system will take 3 samples with 1 second intervals")
+    logger.info("2. You will now calibrate each joint of the master arm one by one.")
+    logger.info("3. For each joint, manually align it to match EXACTLY the UR5e position and press ENTER.")
+    logger.info("4. The system will take 3 samples per joint.")
 
-    input("\n▶ Press ENTER when both arms are in position...")
-    time.sleep(5)
+    num_joints = len(ur_joints_deg)
+    mean_master_deg = np.full(num_joints, np.nan)
+    std_master_deg = np.full(num_joints, np.nan)
 
-    # Collect multiple samples
-    logger.info(f"\nCollecting {NUM_HARDWARE_SAMPLES} samples...")
-    samples = []
+    existing_offsets = list(cfg.hardware_offsets[:num_joints]) if cfg.hardware_offsets else []
+    if len(existing_offsets) < num_joints:
+        existing_offsets.extend([0.0] * (num_joints - len(existing_offsets)))
+    hardware_offsets = np.array(existing_offsets, dtype=float)
 
-    for i in range(NUM_HARDWARE_SAMPLES):
-        print(f"  Sample {i+1}/{NUM_HARDWARE_SAMPLES}...", end='', flush=True)
-        master_joints_rad = driver.get_joints()
-        master_joints_deg = np.degrees(master_joints_rad)
-        samples.append(master_joints_deg)
-        print(f" ✓ [{', '.join([f'{v:.2f}' for v in master_joints_deg])}]")
+    logger.info("\nSelect hardware offset calibration mode:")
+    logger.info("1. Calibrate ALL joints")
+    logger.info("2. Calibrate ONE joint")
+    logger.info("3. Calibrate MULTIPLE joints")
+    while True:
+        mode = input("\n▶ Select option (1, 2, or 3): ").strip()
+        if mode in ['1', '2', '3']:
+            break
+        logger.warning("Invalid choice. Please enter 1, 2, or 3.")
 
-        if i < NUM_HARDWARE_SAMPLES - 1:
-            time.sleep(SAMPLE_DELAY_SEC)
+    if mode == '1':
+        joints_to_calibrate = list(range(num_joints))
+    elif mode == '2':
+        while True:
+            choice = input(f"▶ Enter joint number to calibrate (1-{num_joints}): ").strip()
+            if choice.isdigit() and 1 <= int(choice) <= num_joints:
+                joints_to_calibrate = [int(choice) - 1]
+                break
+            logger.warning(f"Invalid joint number. Please enter 1-{num_joints}.")
+    else:
+        while True:
+            choice = input(f"▶ Enter joint numbers separated by commas (1-{num_joints}): ").strip()
+            try:
+                joints = sorted({int(x.strip()) - 1 for x in choice.split(',') if x.strip()})
+            except ValueError:
+                joints = []
 
-    # Calculate mean of samples
-    samples_array = np.array(samples)
-    mean_master_deg = np.mean(samples_array, axis=0)
-    std_master_deg = np.std(samples_array, axis=0)
+            if joints and all(0 <= j < num_joints for j in joints):
+                joints_to_calibrate = joints
+                break
+            logger.warning(f"Invalid input. Example: 1,3,5 (range 1-{num_joints}).")
 
-    # Calculate hardware offsets
-    hardware_offsets = ur_joints_deg - mean_master_deg
+    for joint_idx in joints_to_calibrate:
+        logger.info(f"\n" + "-"*40)
+        logger.info(f"CALIBRATING JOINT {joint_idx + 1}")
+        logger.info(f"Target angle: {ur_joints_deg[joint_idx]:6.1f}°")
+        logger.info("-" * 40)
+        input(f"▶ Align Joint {joint_idx + 1} and press ENTER...")
+        time.sleep(1) # Short delay to let arm settle
+        
+        # Collect multiple samples for this joint
+        logger.info(f"Collecting {NUM_HARDWARE_SAMPLES} samples for Joint {joint_idx + 1}...")
+        joint_samples = []
+        
+        for i in range(NUM_HARDWARE_SAMPLES):
+            print(f"  Sample {i+1}/{NUM_HARDWARE_SAMPLES}...", end='', flush=True)
+            master_joints_rad = driver.get_joints()
+            master_joints_deg = np.degrees(master_joints_rad)
+            joint_samples.append(master_joints_deg[joint_idx])
+            print(f" ✓ [{master_joints_deg[joint_idx]:.2f}°]")
+            
+            if i < NUM_HARDWARE_SAMPLES - 1:
+                time.sleep(SAMPLE_DELAY_SEC)
+                
+        # Calculate mean for this joint
+        samples_array = np.array(joint_samples)
+        mean_master_deg[joint_idx] = np.mean(samples_array)
+        std_master_deg[joint_idx] = np.std(samples_array)
+        hardware_offsets[joint_idx] = ur_joints_deg[joint_idx] - mean_master_deg[joint_idx]
+
+    unchanged_joints = [i for i in range(num_joints) if i not in joints_to_calibrate]
+    if unchanged_joints:
+        logger.info("\nKeeping existing hardware offsets for joints not calibrated in this run:")
+        for idx in unchanged_joints:
+            logger.info(f"  Joint {idx+1}: {hardware_offsets[idx]:7.2f}° (unchanged)")
 
     # Display results
     logger.info("\n" + "-"*60)
     logger.info("CALIBRATION RESULTS")
     logger.info("-"*60)
     logger.info("\nMaster Arm Readings (mean ± std):")
-    for i in range(len(mean_master_deg)):
-        logger.info(f"  Joint {i+1}: {mean_master_deg[i]:7.2f}° ± {std_master_deg[i]:5.2f}°")
+    for i in range(num_joints):
+        if np.isnan(mean_master_deg[i]):
+            logger.info(f"  Joint {i+1}: {'N/A':>7} ± {'N/A':>5} (not calibrated)")
+        else:
+            logger.info(f"  Joint {i+1}: {mean_master_deg[i]:7.2f}° ± {std_master_deg[i]:5.2f}°")
 
     logger.info("\nCalculated Hardware Offsets:")
     for i, offset in enumerate(hardware_offsets):
         logger.info(f"  Joint {i+1}: {offset:7.2f}°")
 
     # Check if standard deviation is too high (potential measurement error)
-    max_std = np.max(std_master_deg)
+    calibrated_std = std_master_deg[~np.isnan(std_master_deg)]
+    max_std = np.max(calibrated_std) if len(calibrated_std) else 0.0
     if max_std > 2.0:
         logger.warning(f"\n⚠ Warning: High standard deviation detected (max: {max_std:.2f}°)")
         logger.warning("  This might indicate the arm moved during sampling.")

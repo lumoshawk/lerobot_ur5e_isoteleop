@@ -118,12 +118,9 @@ class DynamixelRobot(Robot):
         for i in range(len(joint_state[:6])):
             obs_dict[f"joint_{i+1}.pos"] = joint_state[i]
 
-        if not self._use_gripper:
-            joint_state[-1] = None
-
         return {
             **obs_dict,
-            "gripper_position": joint_state[-1],
+            "gripper_position": None if not self._use_gripper else joint_state[-1],
         }
 
     def _start_trigger(self, servo_id, rest_deg, sign=1, loop_hz=10):

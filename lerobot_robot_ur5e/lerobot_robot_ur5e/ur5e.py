@@ -289,7 +289,7 @@ class UR5e(Robot):
                 self._arm["rtde_c"].forceMode(self.task_frame,self.config.select_vector,ft_target,self.type,self.config.force_limit)
             self._arm["rtde_c"].waitPeriod(t_start)
 
-        if "gripper_position" in action:
+        if "gripper_position" in action and action["gripper_position"] is not None:
             self._gripper_position = float(action["gripper_position"])
             
         return action
@@ -376,14 +376,16 @@ class UR5e(Robot):
         return np.concatenate([ee_pos, ee_rot])
 
     def stop_force(self):
-        self._arm["rtde_c"].forceMode(self.task_frame,[0, 0, 0, 0, 0, 0],np.array([0, 0, 0, 0, 0, 0]),self.type,self.config.force_limit)
+        if self.config.control_space == "force":
+            self._arm["rtde_c"].forceModeStop()
 
     def disconnect(self) -> None:
         if not self.is_connected:
             return
 
         if self._arm is not None:
-            self._arm["rtde_c"].forceMode(self.task_frame,[0, 0, 0, 0, 0, 0],np.array([0, 0, 0, 0, 0, 0]),self.type,self.config.force_limit)
+            if self.config.control_space == "force":
+                self._arm["rtde_c"].forceModeStop()
             self._arm["rtde_c"].disconnect()
             self._arm["rtde_r"].disconnect()
 
