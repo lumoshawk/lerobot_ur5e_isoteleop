@@ -45,6 +45,7 @@ class RecordConfig:
         if self.is_dual_arm:
             # Dual-arm teleop config
             self.port = teleop["port"]
+            self.baudrate = teleop.get("baudrate", 57600)
             self.control_mode = teleop.get("control_mode", "isoteleop")
             self.left_arm = teleop["left_arm"]
             self.right_arm = teleop["right_arm"]
@@ -62,6 +63,7 @@ class RecordConfig:
             # Single-arm config (backward compatibility)
             dxl_cfg = teleop["dynamixel_config"]
             self.port = dxl_cfg["port"]
+            self.baudrate = dxl_cfg.get("baudrate", 57600)
             self.use_gripper = dxl_cfg["use_gripper"]
             self.joint_ids = dxl_cfg["joint_ids"]
             self.joint_offsets = dxl_cfg["joint_offsets"]
@@ -159,14 +161,16 @@ def check_joint_offsets(record_cfg: RecordConfig, arm_name: str = None):
                 'joint_ids': record_cfg.left_arm["joint_ids"],
                 'joint_signs': record_cfg.left_arm["joint_signs"],
                 'hardware_offsets': record_cfg.left_arm["hardware_offsets"],
-                'port': record_cfg.port
+                'port': record_cfg.port,
+                'baudrate': record_cfg.baudrate,
             })()
         else:
             temp_cfg = type('obj', (object,), {
                 'joint_ids': record_cfg.right_arm["joint_ids"],
                 'joint_signs': record_cfg.right_arm["joint_signs"],
                 'hardware_offsets': record_cfg.right_arm["hardware_offsets"],
-                'port': record_cfg.port
+                'port': record_cfg.port,
+                'baudrate': record_cfg.baudrate,
             })()
     else:
         temp_cfg = record_cfg
@@ -176,7 +180,7 @@ def check_joint_offsets(record_cfg: RecordConfig, arm_name: str = None):
     if not np.allclose(joint_offsets, joint_offsets_to_check, atol=1e-2):
         logging.error(f"====== [ERROR] Computed joint_offsets {joint_offsets} != provided joint_offsets {joint_offsets_to_check}. Please check teleop_joint_offsets.py output. ======")
         termios.tcflush(sys.stdin, termios.TCIFLUSH)
-        ans = input("Do you want to update with the new computed values and retry? (y/n): ").strip().lower()
+        ans = input("Do you want to update with the new computed values and retry? (Y/n): ").strip().lower() or 'y'
 
         if ans == "y":
             logging.info(f"====== [UPDATE] Updating joint_offsets from {joint_offsets_to_check} to {joint_offsets} ======")
@@ -209,7 +213,7 @@ def handle_incomplete_dataset(dataset_path):
     if dataset_path.exists():
         print(f"====== [WARNING] Detected an incomplete dataset folder: {dataset_path} ======")
         termios.tcflush(sys.stdin, termios.TCIFLUSH)
-        ans = input("Do you want to delete it? (y/n): ").strip().lower()
+        ans = input("Do you want to delete it? (Y/n): ").strip().lower() or 'y'
         if ans == "y":
             print(f"====== [DELETE] Removing folder: {dataset_path} ======")
             shutil.rmtree(dataset_path, ignore_errors=True)  # Delete only this specific dataset folder
@@ -339,6 +343,7 @@ def run_record(record_cfg: RecordConfig):
             # Create dual-arm teleop configuration
             teleop_config = UR5eTeleopConfig(
                 port=record_cfg.port,
+                baudrate=record_cfg.baudrate,
                 control_mode=record_cfg.control_mode,
                 left_arm=record_cfg.left_arm,
                 right_arm=record_cfg.right_arm)
@@ -549,6 +554,7 @@ def run_record(record_cfg: RecordConfig):
 
         while episode_idx < record_cfg.num_episodes and not events["stop_recording"]:
             logging.info(f"====== [RECORD] Recording episode {episode_idx + 1} of {record_cfg.num_episodes} ======")
+            teleop.start_gcomp()
             record_loop(
                 robot=robot,
                 events=events,
@@ -562,6 +568,7 @@ def run_record(record_cfg: RecordConfig):
                 single_task=record_cfg.task_description,
                 display_data=record_cfg.display,
             )
+            teleop.stop_gcomp()
 
             # If freedrive was requested mid-episode, handle it and restart episode
             if handle_freedrive_if_requested(freedrive_state, events, robot, record_cfg.is_dual_arm, dataset):
@@ -591,6 +598,7 @@ def run_record(record_cfg: RecordConfig):
                         logging.info("====== [WARNING] Please press only Enter to continue ======")
 
                 logging.info("====== [RESET] Resetting the environment ======")
+                teleop.start_gcomp()
                 record_loop(
                     robot=robot,
                     events=events,
@@ -603,6 +611,7 @@ def run_record(record_cfg: RecordConfig):
                     single_task=record_cfg.task_description,
                     display_data=record_cfg.display,
                 )
+                teleop.stop_gcomp()
 
             episode_idx += 1
 

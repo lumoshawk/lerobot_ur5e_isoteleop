@@ -19,6 +19,7 @@ from pathlib import Path
 from .dynamixel.dynamixel_robot import DynamixelRobot
 from typing import Any, Dict
 import yaml
+import numpy as np
 from lerobot.utils.errors import DeviceNotConnectedError
 from lerobot.teleoperators.teleoperator import Teleoperator
 from .config_teleop import UR5eTeleopConfig
@@ -75,6 +76,7 @@ class UR5eTeleop(Teleoperator):
                     'joint_signs': self.cfg.left_arm['joint_signs'],
                     'use_gripper': self.cfg.left_arm['use_gripper'],
                     'gripper_config': self.cfg.left_arm['gripper_config'],
+                    'gcomp_enable': self.cfg.left_arm.get('gcomp_enable', False),
                 },
                 right_arm_config={
                     'hardware_offsets': self.cfg.right_arm['hardware_offsets'],
@@ -83,8 +85,10 @@ class UR5eTeleop(Teleoperator):
                     'joint_signs': self.cfg.right_arm['joint_signs'],
                     'use_gripper': self.cfg.right_arm['use_gripper'],
                     'gripper_config': self.cfg.right_arm['gripper_config'],
+                    'gcomp_enable': self.cfg.right_arm.get('gcomp_enable', False),
                 },
                 port=self.cfg.port,
+                baudrate=self.cfg.baudrate,
                 real=True,
             )
 
@@ -107,9 +111,11 @@ class UR5eTeleop(Teleoperator):
                     joint_offsets=self.cfg.joint_offsets,
                     joint_signs=self.cfg.joint_signs,
                     port=self.cfg.port,
+                    baudrate=self.cfg.baudrate,
                     use_gripper=self.cfg.use_gripper,
                     gripper_config=self.cfg.gripper_config,
                     real=True,
+                    gcomp_enable=getattr(self.cfg, 'gcomp_enable', False),
                     )
             joint_positions = self.dynamixel_robot.get_joint_state()
             logger.info(f"[TELEOP] Current joint positions: {joint_positions.tolist()}")
@@ -127,6 +133,11 @@ class UR5eTeleop(Teleoperator):
             left_obs = self.dynamixel_robot_left.get_observations()
             right_obs = self.dynamixel_robot_right.get_observations()
 
+            # Debug: log master arm joint positions (degrees)
+            l_joints = [f"{np.degrees(float(left_obs[f'joint_{i+1}.pos'])):.2f}" for i in range(6)]
+            r_joints = [f"{np.degrees(float(right_obs[f'joint_{i+1}.pos'])):.2f}" for i in range(6)]
+            logger.debug(f"[TELEOP-ACT] L_master(deg): [{', '.join(l_joints)}]  R_master(deg): [{', '.join(r_joints)}]")
+
             # Prefix keys with left_ and right_
             combined_obs = {}
             for key, value in left_obs.items():
@@ -142,17 +153,33 @@ class UR5eTeleop(Teleoperator):
     def send_feedback(self, feedback: dict[str, Any]) -> None:
         pass
 
+    def start_gcomp(self) -> None:
+        """Start gravity compensation threads."""
+        if self.is_dual_arm:
+            self.dual_arm_robot.start_gcomp()
+        else:
+            self.dynamixel_robot._start_gcomp(self.dynamixel_robot._joint_ids[:6])
+
+    def stop_gcomp(self) -> None:
+        """Stop gravity compensation threads and disable torque."""
+        if self.is_dual_arm:
+            self.dual_arm_robot.stop_gcomp()
+        else:
+            self.dynamixel_robot.stop_gcomp()
+
     def disconnect(self) -> None:
         if not self.is_connected:
             return
 
         if self.is_dual_arm:
-            # Stop trigger thread before closing driver
+            # Stop trigger and gcomp threads before closing driver
             self.dual_arm_robot.stop_trigger()
+            self.dual_arm_robot.stop_gcomp()
             # Close the shared driver only once
             self.dual_arm_robot._driver.close()
         else:
             self.dynamixel_robot.stop_trigger()
+            self.dynamixel_robot.stop_gcomp()
             self.dynamixel_robot._driver.close()
 
         logger.info(f"[INFO] ===== All {self.name} connections have been closed =====")

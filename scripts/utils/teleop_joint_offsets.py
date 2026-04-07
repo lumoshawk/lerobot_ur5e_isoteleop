@@ -69,7 +69,7 @@ def connect_to_dynamixel(cfg) -> Optional[DynamixelDriver]:
         logger.info(f"Port: {cfg.port}")
         logger.info(f"Joint IDs: {cfg.joint_ids}")
 
-        driver = DynamixelDriver(cfg.joint_ids, port=cfg.port, baudrate=57600)
+        driver = DynamixelDriver(cfg.joint_ids, port=cfg.port, baudrate=getattr(cfg, 'baudrate', 57600))
 
         # Warmup reads
         for _ in range(10):
@@ -406,7 +406,7 @@ def save_calibration(cfg_path: Path, hardware_offsets: List[float],
     for i, offset in enumerate(joint_offsets):
         logger.info(f"  Joint {i+1}: {offset:7.3f}")
 
-    response = input("\n▶ Save these calibration values to cfg.yaml? (y/n): ").lower()
+    response = input("\n▶ Save these calibration values to cfg.yaml? (Y/n): ").lower() or 'y'
 
     if response != 'y':
         logger.info("✗ Calibration not saved.")
@@ -627,7 +627,7 @@ def get_start_joints(cfg) -> List[float]:
 def compute_joint_offsets(cfg, start_joints: List[float]):
     """Compute offsets for Dynamixel joints to match the UR5e joint positions."""
 
-    driver = DynamixelDriver(cfg.joint_ids, port=cfg.port, baudrate=57600)
+    driver = DynamixelDriver(cfg.joint_ids, port=cfg.port, baudrate=getattr(cfg, 'baudrate', 57600))
 
     # Warmup reads
     for _ in range(10):

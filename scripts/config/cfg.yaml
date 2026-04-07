@@ -21,6 +21,7 @@
 #      joint_offsets: [0.0, -3.142, -6.283, -6.283, -3.142, 4.712]
 #      joint_signs: [1, -1, 1, -1, 1, 1]
 #      gripper_config: [ 13, 4.41568301, 2.8099801, 3.8397, 1, 10 ] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
+#      gcomp_enable: false # Enable gravity compensation
 #
 #  robot:
 #    ip: &ip "192.168.131.11" # robot_ip
@@ -84,22 +85,25 @@ record:
   teleop:
     control_mode: "isoteleop"
     port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" # Shared port for all Dynamixel servos
+    baudrate: 1000000 # Dynamixel baud rate — raise to 1 000 000 for lower bus latency
 
     left_arm:
       hardware_offsets: [-359.501953125, -299.091796875, -180.87890625, -268.271484375, -89.296875, -357.509765625] # The Calibration offsets between the master and the slave robot
-      use_gripper: &use_gripper_left True # whether the slave robot can use gripper
+      use_gripper: &use_gripper_left true # whether the slave robot can use gripper
       joint_ids: [7,8,9,10,11,12]
       joint_offsets: [0.0, -3.142, 0.0, -3.142, -3.142, 0.0]
       joint_signs: [1, -1, 1, -1, 1, 1]
-      gripper_config: [14,1.85004901, 3.43829863, 2.53072742, -1, 10] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
+      gripper_config: [14,1.85004901, 3.43829863, 2.53072742, -1, 30] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
+      gcomp_enable: true # Enable gravity compensation for this arm
 
     right_arm:
       hardware_offsets: [-447.216796875, -363.1640625, 57.7734375, -84.90234375, -90.41015625, -361.46484375] # The Calibration offsets between the master and the slave robot
-      use_gripper: &use_gripper_right True # whether the slave robot can use gripper
+      use_gripper: &use_gripper_right true # whether the slave robot can use gripper
       joint_ids: [1,2,3,4,5,6]
-      joint_offsets: [-6.283, 0.0, 0.0, 0.0, 0.0, 1.571]
+      joint_offsets: [-6.283, 0.0, 0.0, 0.0, 0.0, -4.712]
       joint_signs: [ 1, 1, -1, 1, 1, 1 ]
-      gripper_config: [13, 4.41568301, 2.8099801, 3.8397, 1, 10] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
+      gripper_config: [13, 4.41568301, 2.8099801, 3.8397, 1, 30] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
+      gcomp_enable: true # Enable gravity compensation for this arm
 
   robot:
     left_arm:
@@ -150,7 +154,7 @@ record:
         vel_delta: 0.2
         gain_scale: 1.5
       joint_mode:
-        look_ahead_time: 0.1
+        look_ahead_time: 0.2
         dt: 0.002
         gain: 100
 

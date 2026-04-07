@@ -8,6 +8,7 @@ from lerobot.teleoperators.config import TeleoperatorConfig
 @dataclass
 class UR5eTeleopConfig(TeleoperatorConfig):
     port: str
+    baudrate: int = 57600
     control_mode: str = "isoteleop"
 
     # Single-arm configuration (optional, for backward compatibility)
@@ -17,6 +18,7 @@ class UR5eTeleopConfig(TeleoperatorConfig):
     joint_offsets: Optional[list[float]] = None
     joint_signs: Optional[list[int]] = None
     gripper_config: Optional[tuple[int, float, float]] = None
+    gcomp_enable: Optional[bool] = False
 
     # Dual-arm configuration (optional)
     left_arm: Optional[dict] = None

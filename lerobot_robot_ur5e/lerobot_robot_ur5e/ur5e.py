@@ -279,6 +279,10 @@ class UR5e(Robot):
 
         joint_positions = [float(action[f"joint_{i+1}.pos"]) for i in range(self._num_joints)]
 
+        # Debug: log action being sent to slave arm (degrees)
+        joints_deg = [f"{np.degrees(j):.2f}" for j in joint_positions]
+        logger.debug(f"[SLAVE-ACT] {self.config.robot_ip} target(deg): [{', '.join(joints_deg)}]")
+
         ft_target=self._calculate_ft_target(action)
 
         if not self.config.debug:

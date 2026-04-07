@@ -66,6 +66,11 @@ class DualArmDynamixelRobot:
         for arm_cfg in (left_arm_config, right_arm_config):
             self._start_trigger_from_gripper_config(arm_cfg)
 
+        # Start gravity compensation for each arm that has gcomp_enable
+        self._gcomp_threads = []
+        for arm_cfg, arm_key in [(left_arm_config, 'left_arm'), (right_arm_config, 'right_arm')]:
+            self._start_gcomp_from_arm_config(arm_cfg, arm_key)
+
         # Create wrapper objects for each arm
         self._left_wrapper = ArmWrapper(
             self._driver,
@@ -128,6 +133,34 @@ class DualArmDynamixelRobot:
             trigger.stop()
         self._triggers.clear()
 
+    def _start_gcomp_from_arm_config(self, arm_config, arm_key):
+        """Start gravity compensation thread if arm_config has gcomp_enable."""
+        if not arm_config.get('gcomp_enable', False):
+            return
+        try:
+            from .gravity_compensation import GravityCompensationThread
+            gcomp = GravityCompensationThread(
+                driver=self._driver,
+                arm_key=arm_key,
+                joint_ids=arm_config['joint_ids'],
+                loop_hz=10
+            )
+            gcomp.start()
+            self._gcomp_threads.append(gcomp)
+        except Exception as e:
+            logger.warning(f"[GCOMP] Failed to start on {arm_key}: {e}")
+
+    def start_gcomp(self):
+        """Start gravity compensation threads (stops any existing ones first)."""
+        self.stop_gcomp()
+        for arm_cfg, arm_key in [(self.left_config, 'left_arm'), (self.right_config, 'right_arm')]:
+            self._start_gcomp_from_arm_config(arm_cfg, arm_key)
+
+    def stop_gcomp(self):
+        """Stop all gravity compensation threads."""
+        for gcomp in self._gcomp_threads:
+            gcomp.stop()
+        self._gcomp_threads.clear()
 
 class ArmWrapper:
     """Wrapper class that provides DynamixelRobot-like interface for a single arm."""
@@ -168,6 +201,11 @@ class ArmWrapper:
             self.gripper_open_close = (gripper_cfg[1], gripper_cfg[2])
 
         self._torque_on = False
+        self._last_pos = None
+        if config.get('gcomp_enable', False):
+            self._alpha = 1   # EMA smoothing factor (0=infinite smooth, 1=no smooth)
+        else:
+            self._alpha = 0.9
 
     def num_dofs(self) -> int:
         """Return number of degrees of freedom."""
@@ -201,6 +239,13 @@ class ArmWrapper:
             )
             g_pos = min(max(0, g_pos), 1)
             pos[-1] = g_pos
+
+        # EMA smoothing to reduce Dynamixel jitter
+        if self._last_pos is None:
+            self._last_pos = pos.copy()
+        else:
+            pos = self._alpha * pos + (1 - self._alpha) * self._last_pos
+            self._last_pos = pos.copy()
 
         return pos
 

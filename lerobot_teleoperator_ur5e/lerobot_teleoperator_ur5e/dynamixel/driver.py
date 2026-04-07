@@ -1,4 +1,5 @@
 import os
+import queue
 import subprocess
 import time
 from threading import Event, Lock, Thread
@@ -30,6 +31,8 @@ TORQUE_DISABLE = 0
 # Additional control table addresses and lengths for current mode and velocities
 ADDR_GOAL_CURRENT = 102
 LEN_GOAL_CURRENT = 2
+ADDR_PRESENT_CURRENT = 126
+LEN_PRESENT_CURRENT = 2
 ADDR_PRESENT_VELOCITY = 128
 LEN_PRESENT_VELOCITY = 4
 ADDR_OPERATING_MODE = 11
@@ -182,7 +185,9 @@ class DynamixelDriver(DynamixelDriverProtocol):
         self._ids = ids
         self._joint_angles = None
         self._velocities = None
+        self._currents = None
         self._lock = Lock()
+        self._write_queue = queue.Queue()  # All writes go through here
         self._port = port
         self._baudrate = baudrate
         self._max_retries = max_retries
@@ -251,13 +256,28 @@ class DynamixelDriver(DynamixelDriverProtocol):
         # Initialize the port handler, packet handler, and group sync read/write
         self._portHandler = PortHandler(self._port)
         self._packetHandler = PacketHandler(2.0)
-        # Read both velocity and position in one transaction
+        # Read velocity and position in one transaction, create helper
         self._groupSyncRead = GroupSyncRead(
             self._portHandler,
             self._packetHandler,
             ADDR_PRESENT_VELOCITY,
             LEN_PRESENT_VELOCITY + LEN_PRESENT_POSITION,
         )
+        # Separate GroupSyncRead for currents
+        self._groupSyncReadCurrent = GroupSyncRead(
+            self._portHandler,
+            self._packetHandler,
+            ADDR_PRESENT_CURRENT,
+            LEN_PRESENT_CURRENT,
+        )
+
+        # Open the port and set the baudrate
+        if not self._portHandler.openPort():
+            raise RuntimeError("Failed to open the port")
+
+        if not self._portHandler.setBaudRate(self._baudrate):
+            raise RuntimeError(f"Failed to change the baudrate, {self._baudrate}")
+
         # Separate writers for position and current
         self._groupSyncWrite = GroupSyncWrite(
             self._portHandler,
@@ -272,18 +292,16 @@ class DynamixelDriver(DynamixelDriverProtocol):
             LEN_GOAL_CURRENT,
         )
 
-        # Open the port and set the baudrate
-        if not self._portHandler.openPort():
-            raise RuntimeError("Failed to open the port")
 
-        if not self._portHandler.setBaudRate(self._baudrate):
-            raise RuntimeError(f"Failed to change the baudrate, {self._baudrate}")
-
-        # Add parameters for each Dynamixel servo to the group sync read
+        # Add parameters for each Dynamixel servo to the group sync reads
         for dxl_id in self._ids:
             if not self._groupSyncRead.addParam(dxl_id):
                 raise RuntimeError(
                     f"Failed to add parameter for Dynamixel with ID {dxl_id}"
+                )
+            if not self._groupSyncReadCurrent.addParam(dxl_id):
+                raise RuntimeError(
+                    f"Failed to add current parameter for Dynamixel with ID {dxl_id}"
                 )
 
         # Disable torque for each Dynamixel servo
@@ -313,34 +331,24 @@ class DynamixelDriver(DynamixelDriverProtocol):
             self._fake_joint_angles = np.array(joint_angles)
             return
 
+        params = []
         for dxl_id, angle in zip(self._ids, joint_angles):
-            # Convert the angle to the appropriate value for the servo
             position_value = int(angle * 2048 / np.pi)
-
-            # Allocate goal position value into byte array
             param_goal_position = [
                 DXL_LOBYTE(DXL_LOWORD(position_value)),
                 DXL_HIBYTE(DXL_LOWORD(position_value)),
                 DXL_LOBYTE(DXL_HIWORD(position_value)),
                 DXL_HIBYTE(DXL_HIWORD(position_value)),
             ]
+            params.append((dxl_id, param_goal_position))
 
-            # Add goal position value to the Syncwrite parameter storage
-            dxl_addparam_result = self._groupSyncWrite.addParam(
-                dxl_id, param_goal_position
-            )
-            if not dxl_addparam_result:
-                raise RuntimeError(
-                    f"Failed to set joint angle for Dynamixel with ID {dxl_id}"
-                )
+        def _write():
+            for dxl_id, param in params:
+                self._groupSyncWrite.addParam(dxl_id, param)
+            self._groupSyncWrite.txPacket()
+            self._groupSyncWrite.clearParam()
 
-        # Syncwrite goal position
-        dxl_comm_result = self._groupSyncWrite.txPacket()
-        if dxl_comm_result != COMM_SUCCESS:
-            raise RuntimeError("Failed to syncwrite goal position")
-
-        # Clear syncwrite parameter storage
-        self._groupSyncWrite.clearParam()
+        self._write_queue.put(_write)
 
     def set_current(self, currents: Sequence[float]):
         if self._is_fake:
@@ -365,21 +373,18 @@ class DynamixelDriver(DynamixelDriverProtocol):
                 currents_array, -self.current_limits, self.current_limits
             )
 
-        with self._lock:
-            for dxl_id, current in zip(self._ids, currents_array.tolist()):
-                current_value = int(current)
-                param_goal_current = [
-                    DXL_LOBYTE(current_value),
-                    DXL_HIBYTE(current_value),
-                ]
-                if not self._groupSyncWriteCurrent.addParam(dxl_id, param_goal_current):
-                    raise RuntimeError(
-                        f"Failed to set current for Dynamixel with ID {dxl_id}"
-                    )
-            dxl_comm_result = self._groupSyncWriteCurrent.txPacket()
-            if dxl_comm_result != COMM_SUCCESS:
-                raise RuntimeError("Failed to syncwrite goal current")
+        params = []
+        for dxl_id, current in zip(self._ids, currents_array.tolist()):
+            current_value = int(current)
+            params.append((dxl_id, [DXL_LOBYTE(current_value), DXL_HIBYTE(current_value)]))
+
+        def _write():
+            for dxl_id, param in params:
+                self._groupSyncWriteCurrent.addParam(dxl_id, param)
+            self._groupSyncWriteCurrent.txPacket()
             self._groupSyncWriteCurrent.clearParam()
+
+        self._write_queue.put(_write)
 
     def set_torque(self, torques: Sequence[float]):
         if self.torque_to_current_map is None:
@@ -449,50 +454,82 @@ class DynamixelDriver(DynamixelDriverProtocol):
         self._reading_thread.start()
 
     def _read_joint_states(self):
-        # Continuously read joint angles and velocities
+        # This thread owns the bus. It holds _lock during all bus I/O so that
+        # legacy callers using `with self._lock:` still work correctly.
+        # High-frequency writers should use _write_queue for zero-contention writes.
         while not self._stop_thread.is_set():
             time.sleep(0.001)
             with self._lock:
+                # Drain all pending writes first
+                while True:
+                    try:
+                        write_fn = self._write_queue.get_nowait()
+                        write_fn()
+                    except queue.Empty:
+                        break
+
                 _joint_angles = np.zeros(len(self._ids), dtype=int)
                 _velocities = np.zeros(len(self._ids), dtype=int)
+                _currents = np.zeros(len(self._ids), dtype=int)
+
+                # Read positions and velocities
                 dxl_comm_result = self._groupSyncRead.txRxPacket()
                 if dxl_comm_result != COMM_SUCCESS:
                     print(f"warning, comm failed: {dxl_comm_result}")
                     continue
-                for i, dxl_id in enumerate(self._ids):
-                    # velocity
-                    if self._groupSyncRead.isAvailable(
-                        dxl_id, ADDR_PRESENT_VELOCITY, LEN_PRESENT_VELOCITY
-                    ):
-                        velocity = self._groupSyncRead.getData(
+
+                # Read currents
+                dxl_comm_result_cur = self._groupSyncReadCurrent.txRxPacket()
+                if dxl_comm_result_cur != COMM_SUCCESS:
+                    print(f"warning, current read failed: {dxl_comm_result_cur}")
+
+                try:
+                    for i, dxl_id in enumerate(self._ids):
+                        # current
+                        if dxl_comm_result_cur == COMM_SUCCESS and self._groupSyncReadCurrent.isAvailable(
+                            dxl_id, ADDR_PRESENT_CURRENT, LEN_PRESENT_CURRENT
+                        ):
+                            current = self._groupSyncReadCurrent.getData(
+                                dxl_id, ADDR_PRESENT_CURRENT, LEN_PRESENT_CURRENT
+                            )
+                            if current > 0x7FFF:
+                                current -= 0x10000
+                            _currents[i] = current
+
+                        # velocity
+                        if self._groupSyncRead.isAvailable(
                             dxl_id, ADDR_PRESENT_VELOCITY, LEN_PRESENT_VELOCITY
-                        )
-                        # sign correction for 32-bit two's complement
-                        if velocity > 0x7FFFFFFF:
-                            velocity -= 0x100000000
-                        _velocities[i] = velocity
-                    else:
-                        raise RuntimeError(
-                            f"Failed to get velocity for Dynamixel with ID {dxl_id}"
-                        )
-                    # position
-                    if self._groupSyncRead.isAvailable(
-                        dxl_id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
-                    ):
-                        angle = self._groupSyncRead.getData(
+                        ):
+                            velocity = self._groupSyncRead.getData(
+                                dxl_id, ADDR_PRESENT_VELOCITY, LEN_PRESENT_VELOCITY
+                            )
+                            if velocity > 0x7FFFFFFF:
+                                velocity -= 0x100000000
+                            _velocities[i] = velocity
+                        else:
+                            print(f"warning, velocity unavailable for ID {dxl_id}, skipping frame")
+                            break
+
+                        # position
+                        if self._groupSyncRead.isAvailable(
                             dxl_id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
-                        )
-                        # sign correction for 32-bit two's complement
-                        if angle > 0x7FFFFFFF:
-                            angle -= 0x100000000
-                        _joint_angles[i] = angle
+                        ):
+                            angle = self._groupSyncRead.getData(
+                                dxl_id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
+                            )
+                            if angle > 0x7FFFFFFF:
+                                angle -= 0x100000000
+                            _joint_angles[i] = angle
+                        else:
+                            print(f"warning, position unavailable for ID {dxl_id}, skipping frame")
+                            break
                     else:
-                        raise RuntimeError(
-                            f"Failed to get joint angles for Dynamixel with ID {dxl_id}"
-                        )
-                self._joint_angles = _joint_angles
-                self._velocities = _velocities
-            # self._groupSyncRead.clearParam()
+                        # Only update cached state if all IDs were read successfully
+                        self._joint_angles = _joint_angles
+                        self._velocities = _velocities
+                        self._currents = _currents
+                except (IndexError, Exception) as e:
+                    print(f"warning, data parse error: {e}, skipping frame")
 
     def get_positions_and_velocities(self) -> Tuple[np.ndarray, np.ndarray]:
         if self._is_fake:
@@ -590,6 +627,11 @@ class DynamixelDriver(DynamixelDriverProtocol):
     def close(self):
         if self._is_fake:
             return
+
+        # Give the bus thread time to drain any pending writes (e.g. torque-disable from gcomp)
+        deadline = time.time() + 0.5
+        while not self._write_queue.empty() and time.time() < deadline:
+            time.sleep(0.01)
 
         self._stop_thread.set()
         self._reading_thread.join()

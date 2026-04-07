@@ -1,11 +1,21 @@
 port: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0
-baudrate: 57600
+
+# functions
 run_trigger: true
 run_grab_t0: true
+
+# gCompensate arms
+grab_arms: [right_arm]
+
+# triggers
 trigger_id: 13
 trigger_rest_deg: 220.0
-trigger_hz: 10
+triggers: [{id: 13, rest_deg: 220.0, sign: 1}, {id: 14, rest_deg: 140.0, sign: -1}]
+
+# ctrl freq, not used
+trigger_hz: 59
 grab_t0_hz: 60
+
 left_arm:
   hardware_offsets: [-177.7734375, -295.3125, -187.03125, -271.171875, -93.8671875,
     -84.90234375]
@@ -14,6 +24,13 @@ left_arm:
   joint_offsets: [3.142, -3.142, 0.0, -3.142, -3.142, 4.712]
   joint_signs: [1, -1, 1, -1, 1, 1]
   gripper_config: [14, 2.5157, 3.479]
+  joint_pid:
+    p: [820, 710, 550, 300, 140, 10]
+    d: [30, 30, 30, 30, 30, 10]
+    pwm: [700, 700, 885, 885, 885, 100]
+    drag_ma: [240, 200, 140, 40, 20, 10]
+    drag_deg: [2,2,2,1.5,1.5, 1.5]
+    drag_mode: 'either' #current, position, both, either
 right_arm:
   hardware_offsets: [-268.681640625, -360.087890625, -301.376953125, -269.82421875,
     -87.626953125, 2.87109375]
@@ -23,6 +40,9 @@ right_arm:
   joint_signs: [1, -1, 1, -1, 1, 1]
   gripper_config: [13, 2.5157, 3.479]
   joint_pid:
-    p: [810, 710, 550, 300, 140, 10]
+    p: [820, 710, 550, 300, 140, 10]
     d: [30, 30, 30, 30, 30, 10]
     pwm: [700, 700, 885, 885, 885, 100]
+    drag_ma: [240, 200, 140, 20, 20, 10]
+    drag_deg: [2, 2, 2, 1.5,1.5, 1.5]
+    drag_mode: 'either'

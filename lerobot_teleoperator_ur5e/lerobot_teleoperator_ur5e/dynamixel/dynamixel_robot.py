@@ -22,7 +22,8 @@ class DynamixelRobot(Robot):
         baudrate: int = 57600,
         use_gripper: bool = True,
         gripper_config: Optional[Tuple[int, float, float]] = None,
-    ):  
+        gcomp_enable: bool = False,
+    ):
         from .driver import (
             DynamixelDriver,
             DynamixelDriverProtocol,
@@ -79,7 +80,12 @@ class DynamixelRobot(Robot):
             sign = int(gripper_config[4]) if len(gripper_config) >= 5 else 1
             loop_hz = int(gripper_config[5]) if len(gripper_config) >= 6 else 10
             self._start_trigger(int(gripper_config[0]), math.degrees(gripper_config[3]), sign, loop_hz)
-        
+
+        # Start gravity compensation if configured
+        self._gcomp = None
+        if gcomp_enable:
+            self._start_gcomp(joint_ids[:6])  # Only arm joints, not gripper
+
     def num_dofs(self) -> int:
         return len(self._joint_ids)
 
@@ -144,3 +150,24 @@ class DynamixelRobot(Robot):
             self._trigger.stop()
             self._trigger = None
 
+    def _start_gcomp(self, joint_ids):
+        """Start gravity compensation for this arm."""
+        try:
+            from .gravity_compensation import GravityCompensationThread
+            # Determine arm_key from joint_ids (1-6 = right_arm, 7-12 = left_arm)
+            arm_key = 'left_arm' if joint_ids[0] >= 7 else 'right_arm'
+            self._gcomp = GravityCompensationThread(
+                driver=self._driver,
+                arm_key=arm_key,
+                joint_ids=list(joint_ids),
+                loop_hz=10
+            )
+            self._gcomp.start()
+        except Exception as e:
+            logger.warning(f"[GCOMP] Failed to start: {e}")
+
+    def stop_gcomp(self):
+        """Stop gravity compensation if running."""
+        if self._gcomp is not None:
+            self._gcomp.stop()
+            self._gcomp = None
