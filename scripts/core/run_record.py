@@ -381,6 +381,8 @@ def run_record(record_cfg: RecordConfig):
                 pos_delta=record_cfg.robot_left["force_mode"]["pos_delta"],
                 vel_delta=record_cfg.robot_left["force_mode"]["vel_delta"],
                 gain_scale=record_cfg.robot_left["force_mode"]["gain_scale"],
+                gripper_mode=record_cfg.robot_left.get("gripper_mode", "binary"),
+                adaptive_gripper=record_cfg.robot_left.get("adaptive_gripper", {}),
             )
 
             right_robot_config = UR5eConfig(
@@ -408,6 +410,8 @@ def run_record(record_cfg: RecordConfig):
                 pos_delta=record_cfg.robot_right["force_mode"]["pos_delta"],
                 vel_delta=record_cfg.robot_right["force_mode"]["vel_delta"],
                 gain_scale=record_cfg.robot_right["force_mode"]["gain_scale"],
+                gripper_mode=record_cfg.robot_right.get("gripper_mode", "binary"),
+                adaptive_gripper=record_cfg.robot_right.get("adaptive_gripper", {}),
             )
 
             # Initialize dual-arm robot and teleoperator

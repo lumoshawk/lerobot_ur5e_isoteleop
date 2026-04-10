@@ -141,7 +141,7 @@ def main():
     cfg = load_cfg()
     port_name, joint_ids = get_all_joint_ids(cfg)
 
-    from_baud = args.from_baud if args.from_baud is not None else 57600
+    from_baud = args.from_baud if args.from_baud is not None else 1000000
     to_baud = args.to_baud if args.to_baud is not None else cfg["record"]["teleop"].get("baudrate", 57600)
 
     print(f"Port:        {port_name}")

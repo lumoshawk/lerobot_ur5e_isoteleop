@@ -30,4 +30,9 @@ class UR5eConfig(RobotConfig):
     vel_delta: int = 0.4
     gain_scale: int = 1.5
     control_space: str="force" # "joint" or "force"
+    gripper_mode: str = "binary"  # "binary" or "adaptive" (phase-dependent force control)
+    adaptive_gripper: dict = field(default_factory=lambda: {
+        "f_min": 20, "f_contact": 50, "f_max": 100, "k_f": 80, "epsilon": 0.05,
+        "vel_free": 50, "vel_grasp": 30, "master_max": 1.0, "contact_hold_sec": 0.5,
+    })
     cameras: dict[str, CameraConfig] = field(default_factory=dict)

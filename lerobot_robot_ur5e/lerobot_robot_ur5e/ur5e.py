@@ -31,6 +31,7 @@ class UR5e(Robot):
         self._is_connected = False
         self._arm = {}
         self._gripper = None
+        self._adaptive_ctrl = None
         self._initial_pose = None
         self._prev_observation = None
         self._num_joints = 6
@@ -64,8 +65,13 @@ class UR5e(Robot):
         if self.config.use_gripper:
             self._gripper = self._check_gripper_connection(self.config.gripper_port)
 
-            # Start gripper state reader
-            self._start_gripper_state_reader()
+            if self.config.gripper_mode == "adaptive":
+                from .adaptive_gripper_ctrl import AdaptiveGripperController
+                self._adaptive_ctrl = AdaptiveGripperController(self._gripper, self.config)
+                threading.Thread(target=self._adaptive_ctrl.run_loop, daemon=True).start()
+            else:
+                # Start gripper state reader (binary mode)
+                self._start_gripper_state_reader()
 
         # Connect cameras
         logger.info("\n===== [CAM] Initializing Cameras =====")
@@ -294,7 +300,10 @@ class UR5e(Robot):
             self._arm["rtde_c"].waitPeriod(t_start)
 
         if "gripper_position" in action and action["gripper_position"] is not None:
-            self._gripper_position = float(action["gripper_position"])
+            if self._adaptive_ctrl is not None:
+                self._adaptive_ctrl.update_master(float(action["gripper_position"]))
+            else:
+                self._gripper_position = float(action["gripper_position"])
             
         return action
 
@@ -345,9 +354,15 @@ class UR5e(Robot):
             self.obs_dict[f"tcp_force.{axis}"] = tcp_force[i]
 
         if self.config.use_gripper:
-            self.obs_dict["gripper_raw_position"] = self._gripper.pos
-            self.obs_dict["gripper_action_bin"] = self._last_gripper_position
-            self.obs_dict["gripper_raw_bin"] = 0 if self._gripper.pos <= self.config.gripper_bin_threshold else 1
+            if self._adaptive_ctrl is not None:
+                gripper_pos = self._adaptive_ctrl.pos
+                self.obs_dict["gripper_raw_position"] = gripper_pos
+                self.obs_dict["gripper_action_bin"] = self._adaptive_ctrl.last_binary
+                self.obs_dict["gripper_raw_bin"] = 0 if gripper_pos is not None and gripper_pos <= self.config.gripper_bin_threshold else 1
+            else:
+                self.obs_dict["gripper_raw_position"] = self._gripper.pos
+                self.obs_dict["gripper_action_bin"] = self._last_gripper_position
+                self.obs_dict["gripper_raw_bin"] = 0 if self._gripper.pos <= self.config.gripper_bin_threshold else 1
         else:
             self.obs_dict["gripper_raw_position"] = None
             self.obs_dict["gripper_action_bin"] = None

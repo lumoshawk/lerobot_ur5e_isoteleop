@@ -85,7 +85,7 @@ record:
   teleop:
     control_mode: "isoteleop"
     port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" # Shared port for all Dynamixel servos
-    baudrate: 1000000 # Dynamixel baud rate — raise to 1 000 000 for lower bus latency
+    baudrate: 115200 # Dynamixel baud rate — raise to 1 000 000 for lower bus latency
 
     left_arm:
       hardware_offsets: [-359.501953125, -299.091796875, -180.87890625, -268.271484375, -89.296875, -357.509765625] # The Calibration offsets between the master and the slave robot
@@ -94,16 +94,16 @@ record:
       joint_offsets: [0.0, -3.142, 0.0, -3.142, -3.142, 0.0]
       joint_signs: [1, -1, 1, -1, 1, 1]
       gripper_config: [14,1.85004901, 3.43829863, 2.53072742, -1, 30] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
-      gcomp_enable: true # Enable gravity compensation for this arm
+      gcomp_enable: false # Enable gravity compensation for this arm
 
     right_arm:
       hardware_offsets: [-447.216796875, -363.1640625, 57.7734375, -84.90234375, -90.41015625, -361.46484375] # The Calibration offsets between the master and the slave robot
       use_gripper: &use_gripper_right true # whether the slave robot can use gripper
       joint_ids: [1,2,3,4,5,6]
-      joint_offsets: [-6.283, 0.0, 0.0, 0.0, 0.0, -4.712]
+      joint_offsets: [-6.283, 0.0, 0.0, 0.0, 0.0, 1.571]
       joint_signs: [ 1, 1, -1, 1, 1, 1 ]
       gripper_config: [13, 4.41568301, 2.8099801, 3.8397, 1, 30] # id, min, max, trigger_rest_rad, trigger_sign, trigger_hz
-      gcomp_enable: true # Enable gravity compensation for this arm
+      gcomp_enable: false # Enable gravity compensation for this arm
 
   robot:
     left_arm:
@@ -114,6 +114,17 @@ record:
       gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
       gripper_port: &gripper_port_left "/dev/ur5e_left_gripper" # gripper_port
       gripper_reverse: &gripper_reverse_left False  # If gripper moves opposite, flip this value
+      gripper_mode: "adaptive" # "binary" (default) or "adaptive" (phase-dependent force control)
+      adaptive_gripper:
+        f_min: 20           # minimum force during free closing (20-100)
+        f_contact: 50       # baseline force on entering contact (higher than f_min to prevent bouncing)
+        f_max: 100          # maximum force clamp
+        k_f: 200             # force gain: how fast force ramps with master angle after contact
+        epsilon: 0.8       # position micro-adjust gain after contact (small)
+        vel_free: 50        # gripper velocity during free closing
+        vel_grasp: 30       # gripper velocity during grasping
+        master_max: 0.43    # max master_pos value at full trigger travel (from gripper_config indices 1,3)
+        contact_hold_sec: 0.5  # minimum time in CONTACT before allowing exit (seconds)
       control_space: "force" # "force" or "joint"
       robot_urdf_path: assets/urdf/ur5e.urdf
       force_mode:
@@ -140,6 +151,17 @@ record:
       gripper_bin_threshold: 0.98 # threshold to determine gripper is closed
       gripper_port: &gripper_port_right "/dev/ur5e_right_gripper" # gripper_port
       gripper_reverse: &gripper_reverse_right False  # If gripper moves opposite, flip this value
+      gripper_mode: "adaptive" # "binary" (default) or "adaptive" (phase-dependent force control)
+      adaptive_gripper:
+        f_min: 20           # minimum force during free closing (20-100)
+        f_contact: 30       # baseline force on entering contact (higher than f_min to prevent bouncing)
+        f_max: 100          # maximum force clamp
+        k_f: 300            # force gain: how fast force ramps with master angle after contact
+        epsilon: 0.8       # position micro-adjust gain after contact (small)
+        vel_free: 50        # gripper velocity during free closing
+        vel_grasp: 30       # gripper velocity during grasping
+        master_max: 0.36    # max master_pos value at full trigger travel (from gripper_config indices 1,3)
+        contact_hold_sec: 0.5  # minimum time in CONTACT before allowing exit (seconds)
       control_space: "joint" # "force" or "joint"
       robot_urdf_path: assets/urdf/ur5e.urdf
       force_mode:
